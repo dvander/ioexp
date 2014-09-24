@@ -16,6 +16,21 @@ namespace amio {
 
 bool GetLinuxVersion(int *major, int *minor, int *release);
 
+static inline bool
+IsAtLeastLinux(int major, int minor, int release)
+{
+  int maj, min, rel;
+  if (!GetLinuxVersion(&maj, &min, &rel))
+    return false;
+  if (maj > major ||
+      (maj == major && min > minor) ||
+      (maj == major && min == minor && rel >= release))
+  {
+    return true;
+  }
+  return false;
+}
+
 } // namespace amio
 
 #endif // _include_amio_linux_h_

@@ -9,8 +9,8 @@
 //
 #include "shared/amio-errors.h"
 #include "posix/amio-posix-errors.h"
+#include "posix/amio-posix-poll.h"
 #include "linux/amio-linux.h"
-#include "linux/amio-linux-poll.h"
 #include <sys/poll.h>
 
 using namespace ke;
@@ -21,14 +21,10 @@ static const size_t kInitialPollSize = 4096;
 PollMessagePump::PollMessagePump()
  : can_use_rdhup_(false)
 {
-  int major, minor, release;
-  if (GetLinuxVersion(&major, &minor, &release) &&
-      ((major > 2 ||
-       (minor == 2 && minor > 6) ||
-       (minor == 2 && minor == 6 && release >= 17))))
-  {
+#if defined(__linux__)
+  if (IsAtLeastLinux(2, 6, 17))
     can_use_rdhup_ = true;
-  }
+#endif
 }
 
 PollMessagePump::~PollMessagePump()
@@ -64,8 +60,10 @@ PollMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> list
 
   // By default we wait for reads (see the comment in the select pump).
   int defaultEvents = POLLIN | POLLERR | POLLHUP;
+#if defined(__linux__)
   if (can_use_rdhup_)
     defaultEvents |= POLLRDHUP;
+#endif
 
   size_t slot;
   struct pollfd pe;
@@ -117,12 +115,16 @@ PollMessagePump::Poll(int timeoutMs)
     if (size_t(fd) >= listeners_.length() || !listeners_[fd].transport)
       continue;
 
+#if defined(__linux__)
     if (revents & POLLRDHUP) {
       Ref<Transport> transport = listeners_[fd].transport;
       Ref<StatusListener> listener = listeners_[fd].listener;
       onClose(fd);
       listener->OnHangup(transport);
+      continue;
     }
+#endif
+
     if (revents & POLLHUP) {
       Ref<Transport> transport = listeners_[fd].transport;
       Ref<StatusListener> listener = listeners_[fd].listener;

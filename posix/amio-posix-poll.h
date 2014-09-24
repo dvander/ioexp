@@ -23,6 +23,9 @@ namespace amio {
 
 using namespace ke;
 
+// This message pump is based on poll(), which is available in glibc, Linux,
+// and BSD. Notably it is not present (as a function call) on Solaris, but
+// as a device (/dev/poll) which deserves a separate implementation.
 class PollMessagePump : public PosixPump
 {
  public:

@@ -2,8 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <amio.h>
-#include "posix/amio-select-pump.h"
-#include "linux/amio-linux-poll.h"
+#include "posix/amio-posix-poll.h"
 
 using namespace ke;
 using namespace amio;

@@ -9,7 +9,7 @@
 //
 #include "shared/amio-errors.h"
 #include "posix/amio-posix-errors.h"
-#include "posix/amio-select-pump.h"
+#include "posix/amio-posix-select.h"
 #include <string.h>
 #include <signal.h>
 
