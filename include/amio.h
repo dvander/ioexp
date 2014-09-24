@@ -11,7 +11,6 @@
 #define _include_amio_header_h_
 
 #include <am-refcounting.h>
-#include "amio-types.h"
 
 namespace amio {
 
@@ -25,16 +24,134 @@ namespace amio {
 
 using namespace ke;
 
+// Types of errors that can occur.
+enum class AMIO_CLASS ErrorType
+{
+  System,       // System error (code included).
+  Library,      // Library (AMIO) error.
+  Exception     // Generic exception.
+};
+
+// Represents an I/O error.
+class AMIO_CLASS IOError : public ke::Refcounted<IOError>
+{
+ public:
+  // A human-readable message describing the error.
+  virtual const char *Message() = 0;
+
+  // System error code. If none is available it will return 0.
+  virtual int ErrorCode() = 0;
+
+  // A general class the error falls into.
+  virtual ErrorType Type() = 0;
+};
+
+// The result of an IO operation.
+struct AMIO_CLASS IOResult
+{
+  // Set if there was an error.
+  ke::Ref<IOError> Error;
+
+  // True if a connection has received an orderly shutdown from its peer.
+  bool Ended;
+
+  // Number of bytes that successfully completed. If 0 and Ended is false,
+  // then no bytes were received or sent, and the caller should wait for
+  // another read or write event to try again.
+  size_t Bytes;
+
+  IOResult() : Ended(false), Bytes(0)
+  {}
+};
+
+// Wrapper around IOError to make tests with ! work.
+struct MaybeError
+{
+  Ref<IOError> Error;
+
+  explicit MaybeError()
+  {}
+  explicit MaybeError(Ref<IOError> error) : Error(error)
+  {}
+  operator bool() const {
+    return !Error;
+  }
+};
+
 // Flags that can be used for some TransportFactory functions.
 enum AMIO_CLASS TransportFlags
 {
   // Automatically close a transport. This is only relevant when a transport is
   // created from an existing operating system construct (such as a file
   // descriptor).
-  kTransportAutoClose = 0x00000001,
+  kTransportAutoClose     = 0x00000001,
 
-  kTransportNoFlags  =  0x00000000,
-  kTransportDefault  =  kTransportAutoClose
+  kTransportNoFlags       =  0x00000000,
+  kTransportDefaultFlags  =  kTransportAutoClose
+};
+
+class MessagePump;
+
+// Underlying operating system types.
+#if !defined(WIN32)
+// Found in <amio/amio-posix-transport.h>
+class PosixTransport;
+#endif
+
+// A Transport is an abstraction around reading and writing (for example,
+// on POSIX systems, it is a file descriptor). Transports are always
+// asynchronous.
+class AMIO_CLASS Transport : public ke::Refcounted<Transport>
+{
+ public:
+  virtual ~Transport()
+  {}
+
+  // Attempts to read a number of bytes from the transport into the provided
+  // |buffer|, up to |maxlength| bytes. If any bytes are read, the number
+  // of bytes is set in |result| accordingly.
+  //
+  // If the connection has been closed, |Closed| will be true in |result|.
+  // 
+  // If an error occurs, |Error| will be set in |result|, and the result will
+  // be false.
+  virtual bool Read(IOResult *result, uint8_t *buffer, size_t maxlength) = 0;
+
+  // Attempts to write a number of bytes to the transport. If the transport
+  // is connectionless (such as a datagram socket), all bytes are guaranteed
+  // to be sent. Otherwise, only a partial number of bytes may be sent. The
+  // number of bytes sent may be 0 without an error occurring.
+  //
+  // If an error occurs, |Error| will be set in |result|, and the result will
+  // be false.
+  virtual bool Write(IOResult *result, const uint8_t *buffer, size_t maxlength) = 0;
+
+  // Closes the transport, and frees any underlying operating system resources.
+  // This does not free the C++ Transport object itself, which happens when
+  // the object's reference count reaches 0.
+  //
+  // Close() is called automatically in the Transport's destructor.
+  virtual void Close() = 0;
+
+  // Internal functions to cast transports to their underlying types.
+#if !defined(WIN32)
+  virtual PosixTransport *toPosixTransport() = 0;
+#endif
+};
+
+struct AMIO_CLASS MaybeTransport
+{
+  Ref<Transport> transport;
+  Ref<IOError> error;
+
+  MaybeTransport()
+  {}
+  explicit MaybeTransport(Ref<Transport> transport)
+   : transport(transport)
+  {}
+  explicit MaybeTransport(Ref<IOError> error)
+   : error(error)
+  {}
 };
 
 class AMIO_CLASS TransportFactory
@@ -42,8 +159,43 @@ class AMIO_CLASS TransportFactory
  public:
 #if !defined(WIN32)
   // Create a transport from a pre-existing file descriptor.
-  static Ref<Transport> CreateFromDescriptor(int fd, TransportFlags flags = kTransportDefault);
+  static MaybeTransport CreateFromDescriptor(int fd, TransportFlags flags = kTransportDefaultFlags);
+
+  // Create a transport for a unix pipe (via the pipe() call).
+  static MaybeError CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp);
 #endif
+};
+
+// Used to receive notifications about status changes. When an event 
+class AMIO_CLASS StatusListener : public ke::Refcounted<StatusListener>
+{
+ public:
+  virtual ~StatusListener()
+  {}
+
+  // Called when data is available for non-blocking reading.
+  virtual void OnReadReady(ke::Ref<Transport> transport)
+  {}
+
+  // Called when data is available for non-blocking sending.
+  virtual void OnWriteReady(ke::Ref<Transport> transport)
+  {}
+
+  // Called when a connection has been closed by a peer. This is the same as
+  // Read() returning a Closed status, however, some message pumps can detect
+  // this as its own event and return it earlier.
+  //
+  // If this event has been received, the transport is automatically
+  // deregistered beforehand.
+  virtual void OnHangup(ke::Ref<Transport> transport)
+  {}
+
+  // Called when an error state is received.
+  //
+  // If this event has been received, the transport is automatically
+  // deregistered beforehand.
+  virtual void OnError(ke::Ref<Transport> transport, ke::Ref<IOError> error)
+  {}
 };
 
 // A message pump is responsible for receiving messages. It is not thread-safe.
@@ -67,7 +219,8 @@ class AMIO_CLASS MessagePump
    virtual void Interrupt() = 0;
 
    // Registers a transport with the pump. A transport can be registered to at
-   // most one pump at any given time.
+   // most one pump at any given time. Only transports created via
+   // TransportFactory can be registered.
    virtual Ref<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) = 0;
 
    // Deregisters a transport from a pump. This happens automatically if the

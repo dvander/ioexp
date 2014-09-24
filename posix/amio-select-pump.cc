@@ -12,9 +12,9 @@
 #include "posix/amio-select-pump.h"
 #include <string.h>
 #include <signal.h>
-#include <errno.h>
 
 using namespace amio;
+using namespace ke;
 
 SelectMessagePump::SelectMessagePump()
 {
@@ -33,19 +33,38 @@ SelectMessagePump::~SelectMessagePump()
   }
 }
 
-ke::Ref<IOError>
-SelectMessagePump::Register(ke::Ref<PosixTransport> transport,  ke::Ref<StatusListener> listener)
+Ref<IOError>
+SelectMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 {
+  Ref<PosixTransport> transport(baseTransport->toPosixTransport());
+  if (!transport)
+    return eIncompatibleTransport;
   if (transport->pump())
     return eTransportAlreadyRegistered;
   if (transport->fd() >= FD_SETSIZE)
     return new GenericError("descriptor %d is above FD_SETSIZE (%d)", transport->fd(), FD_SETSIZE);
 
+  assert(listener);
   assert(size_t(transport->fd()) < max_listeners_);
+
   transport->setPump(this);
   listeners_[transport->fd()].transport = transport;
   listeners_[transport->fd()].listener = listener;
+
+  // Automatically listen for reads, so it's possible to simply wait for data.
+  // We don't bother listening for writes since we can always just try calling
+  // Transport::Write().
+  FD_SET(transport->fd(), &read_fds_);
   return nullptr;
+}
+
+void
+SelectMessagePump::Deregister(Ref<Transport> baseTransport)
+{
+  Ref<PosixTransport> transport(baseTransport->toPosixTransport());
+  assert(transport);
+
+  onClose(transport->fd());
 }
 
 bool
@@ -60,7 +79,7 @@ SelectMessagePump::Poll(struct timeval *timeoutp)
   fd_set write_fds = write_fds_;
   int result = select(fd_watermark_, &read_fds, &write_fds, nullptr, timeoutp);
   if (result == -1)
-    return new PosixError(errno);
+    return new PosixError();
 
   for (size_t i = 0; i < max_listeners_; i++) {
     if (!listeners_[i].transport)
@@ -100,14 +119,14 @@ SelectMessagePump::handleWrite(int fd)
 }
 
 void
-SelectMessagePump::onWouldBlockRead(int fd)
+SelectMessagePump::onReadWouldBlock(int fd)
 {
   assert(listeners_[fd].transport);
   FD_SET(fd, &read_fds_);
 }
 
 void
-SelectMessagePump::onWouldBlockWrite(int fd)
+SelectMessagePump::onWriteWouldBlock(int fd)
 {
   assert(listeners_[fd].transport);
   FD_SET(fd, &write_fds_);
@@ -116,6 +135,9 @@ SelectMessagePump::onWouldBlockWrite(int fd)
 void
 SelectMessagePump::onClose(int fd)
 {
+  if (!listeners_[fd].transport || listeners_[fd].transport->pump() != this)
+    return;
+
   FD_CLR(fd, &read_fds_);
   FD_CLR(fd, &write_fds_);
   listeners_[fd].transport = nullptr;

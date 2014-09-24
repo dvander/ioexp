@@ -10,23 +10,33 @@
 #ifndef _include_amio_posix_transport_h_
 #define _include_amio_posix_transport_h_
 
-#include "include/amio-types.h"
+#include "include/amio.h"
+
+#if defined(WIN32)
+# error PosixTransport cannot be used on Windows.
+#endif
 
 namespace amio {
 
+// Forward declaration.
 class PosixPump;
 
+// A PosixTransport wraps a Unix file descriptor.
 class PosixTransport : public Transport
 {
  public:
-  PosixTransport(int fd);
+  PosixTransport(int fd, TransportFlags flags);
   ~PosixTransport();
 
   // Transport implementation.
-  ssize_t Read(IOResult *result, uint8_t *buffer, size_t maxlength) override;
-  ssize_t Write(IOResult *result, const uint8_t *buffer, size_t maxlength) override;
+  bool Read(IOResult *result, uint8_t *buffer, size_t maxlength) override;
+  bool Write(IOResult *result, const uint8_t *buffer, size_t maxlength) override;
   void Close();
+  PosixTransport *toPosixTransport() {
+    return static_cast<PosixTransport *>(this);
+  }
 
+  // Return the underlying file descriptor.
   int fd() const {
     return fd_;
   }
@@ -43,6 +53,7 @@ class PosixTransport : public Transport
 
  private:
   int fd_;
+  TransportFlags flags_;
   PosixPump *pump_;
 };
 

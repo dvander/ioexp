@@ -10,8 +10,17 @@
 #include "posix/amio-posix-errors.h"
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 
 using namespace amio;
+
+ke::Ref<GenericError> amio::eIncompatibleTransport = new GenericError("transport is not a PosixTransport");
+
+PosixError::PosixError()
+ : errcode_(errno),
+   computed_message_(false)
+{
+}
 
 PosixError::PosixError(int errcode)
  : errcode_(errcode),

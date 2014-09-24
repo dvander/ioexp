@@ -10,7 +10,8 @@
 #ifndef _include_amio_posix_errors_h_
 #define _include_amio_posix_errors_h_
 
-#include "include/amio-types.h"
+#include "include/amio.h"
+#include "shared/amio-errors.h"
 
 namespace amio {
 
@@ -18,7 +19,11 @@ namespace amio {
 class PosixError : public IOError
 {
  public:
-  PosixError(int errcode);
+  // Use |errno|.
+  PosixError();
+
+  // Use an explicit error code.
+  explicit PosixError(int errcode);
 
   const char *Message() override;
   int ErrorCode() override {
@@ -33,6 +38,8 @@ class PosixError : public IOError
   bool computed_message_;
   char message_[255];
 };
+
+extern ke::Ref<GenericError> eIncompatibleTransport;
 
 } // namespace amio
 

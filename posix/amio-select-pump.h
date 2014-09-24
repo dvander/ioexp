@@ -10,15 +10,17 @@
 #ifndef _include_amio_select_pump_h_
 #define _include_amio_select_pump_h_
 
-#include "include/amio-types.h"
+#include "include/amio.h"
+#include "include/amio-posix-transport.h"
 #include "posix/amio-posix-base-pump.h"
-#include "posix/amio-posix-transport.h"
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <am-utility.h>
 
 namespace amio {
+
+using namespace ke;
 
 class SelectMessagePump : public PosixPump
 {
@@ -27,13 +29,14 @@ class SelectMessagePump : public PosixPump
   ~SelectMessagePump();
 
   bool Poll(struct timeval *timeoutp);
-  ke::Ref<IOError> Register(
-    ke::Ref<PosixTransport> transport, 
-    ke::Ref<StatusListener> listener
+  Ref<IOError> Register(
+    Ref<Transport> transport, 
+    Ref<StatusListener> listener
   );
+  void Deregister(Ref<Transport> baseTransport);
 
-  void onWouldBlockRead(int fd) override;
-  void onWouldBlockWrite(int fd) override;
+  void onReadWouldBlock(int fd) override;
+  void onWriteWouldBlock(int fd) override;
   void onClose(int fd) override;
 
  private:
@@ -42,15 +45,15 @@ class SelectMessagePump : public PosixPump
 
  private:
   struct SelectData {
-    ke::Ref<PosixTransport> transport;
-    ke::Ref<StatusListener> listener;
+    Ref<PosixTransport> transport;
+    Ref<StatusListener> listener;
   };
 
   int fd_watermark_;
   fd_set read_fds_;
   fd_set write_fds_;
   size_t max_listeners_;
-  ke::AutoArray<SelectData> listeners_;
+  AutoArray<SelectData> listeners_;
 };
 
 } // namespace amio

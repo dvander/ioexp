@@ -10,7 +10,7 @@
 #ifndef _include_amio_base_pump_h_
 #define _include_amio_base_pump_h_
 
-#include "include/amio-types.h"
+#include "include/amio.h"
 
 namespace amio {
 
@@ -18,12 +18,12 @@ class PosixPump
 {
  public:
   // Notifies the pump that the socket would block reading.
-  virtual void onWouldBlockRead(int fd) = 0;
+  virtual void onReadWouldBlock(int fd) = 0;
 
   // Notifies the pump that the socket would block writing.
-  virtual void onWouldBlockWrite(int fd) = 0;
+  virtual void onWriteWouldBlock(int fd) = 0;
 
-  // Notifies the pump that the socket has closed.
+  // Notifies the pump that the socket has been closed or an error has occurred.
   virtual void onClose(int fd) = 0;
 };
 
