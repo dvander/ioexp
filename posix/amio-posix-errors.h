@@ -40,6 +40,7 @@ class PosixError : public IOError
 };
 
 extern ke::Ref<GenericError> eIncompatibleTransport;
+extern ke::Ref<GenericError> eTransportClosed;
 
 } // namespace amio
 

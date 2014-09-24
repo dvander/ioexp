@@ -13,12 +13,16 @@
 using namespace amio;
 
 ke::Ref<GenericError> amio::eTransportAlreadyRegistered;
+ke::Ref<GenericError> amio::eOutOfMemory;
+ke::Ref<GenericError> amio::eUnknownHangup;
 
 class InitializeSharedErrors
 {
  public:
   InitializeSharedErrors() {
     eTransportAlreadyRegistered = new GenericError("transport already registered to a message pump");
+    eOutOfMemory = new GenericError("out of memory");
+    eUnknownHangup = new GenericError("unknown hangup");
   }
 } sSharedErrorInitializer;
 

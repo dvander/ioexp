@@ -198,6 +198,9 @@ class AMIO_CLASS StatusListener : public ke::Refcounted<StatusListener>
   {}
 };
 
+// Specify no timeout in Poll().
+static const int kNoTimeout = -1;
+
 // A message pump is responsible for receiving messages. It is not thread-safe.
 class AMIO_CLASS MessagePump
 {
@@ -205,15 +208,18 @@ class AMIO_CLASS MessagePump
    virtual ~MessagePump()
    {}
 
-   // Poll for new events. If |timeoutMs| is non-zero, Poll() may block for
-   // at most that many milliseconds. If the message pump has no transports
+   // Initialize the message pump.
+   virtual Ref<IOError> Initialize() = 0;
+
+   // Poll for new events. If |timeoutMs| is greater than zero, Poll() may block
+   // for at most that many milliseconds. If the message pump has no transports
    // registered, Poll() will exit immediately without an error.
    //
    // An error is returned if the poll itself failed; individual read/write
    // failures are propagated through status listeners.
    //
    // Poll() is not re-entrant.
-   virtual Ref<IOError> Poll(uint32_t timeoutMs = 0) = 0;
+   virtual Ref<IOError> Poll(int timeoutMs = kNoTimeout) = 0;
 
    // Interrupt a poll operation. The active poll operation will return an error.
    virtual void Interrupt() = 0;

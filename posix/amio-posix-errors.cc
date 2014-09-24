@@ -15,6 +15,7 @@
 using namespace amio;
 
 ke::Ref<GenericError> amio::eIncompatibleTransport = new GenericError("transport is not a PosixTransport");
+ke::Ref<GenericError> amio::eTransportClosed = new GenericError("transport is closed");
 
 PosixError::PosixError()
  : errcode_(errno),

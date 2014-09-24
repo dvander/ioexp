@@ -14,7 +14,7 @@
 
 namespace amio {
 
-class PosixPump
+class PosixPump : public MessagePump
 {
  public:
   // Notifies the pump that the socket would block reading.

@@ -51,7 +51,6 @@ class KEConfig:
         '-fno-threadsafe-statics',
         '-Wno-non-virtual-dtor',
         '-Wno-overloaded-virtual',
-        '-Wno-unused-private-field',
       ]
 
       if have_gcc:

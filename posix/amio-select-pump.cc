@@ -17,6 +17,8 @@ using namespace amio;
 using namespace ke;
 
 SelectMessagePump::SelectMessagePump()
+ : fd_watermark_(-1),
+   max_listeners_(FD_SETSIZE)
 {
   FD_ZERO(&read_fds_);
   FD_ZERO(&write_fds_);
@@ -43,6 +45,8 @@ SelectMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> li
     return eTransportAlreadyRegistered;
   if (transport->fd() >= FD_SETSIZE)
     return new GenericError("descriptor %d is above FD_SETSIZE (%d)", transport->fd(), FD_SETSIZE);
+  if (transport->fd() == -1)
+    return eTransportClosed;
 
   assert(listener);
   assert(size_t(transport->fd()) < max_listeners_);
@@ -51,6 +55,9 @@ SelectMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> li
   listeners_[transport->fd()].transport = transport;
   listeners_[transport->fd()].listener = listener;
 
+  if (transport->fd() > fd_watermark_)
+    fd_watermark_ = transport->fd();
+
   // Automatically listen for reads, so it's possible to simply wait for data.
   // We don't bother listening for writes since we can always just try calling
   // Transport::Write().
@@ -58,26 +65,41 @@ SelectMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> li
   return nullptr;
 }
 
+Ref<IOError>
+SelectMessagePump::Initialize()
+{
+  return nullptr;
+}
+
 void
 SelectMessagePump::Deregister(Ref<Transport> baseTransport)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
-  assert(transport);
+  if (transport->fd() == -1)
+    return;
 
   onClose(transport->fd());
 }
 
-bool
-SelectMessagePump::Poll(struct timeval *timeoutp)
+Ref<IOError>
+SelectMessagePump::Poll(int timeoutMs)
 {
   // Bail out early if there's nothing to listen for.
-  if (fd_watermark_ == 0)
-    return true;
+  if (fd_watermark_ == -1)
+    return nullptr;
+
+  struct timeval timeout;
+  struct timeval *timeoutp = nullptr;
+  if (timeoutMs >= 0) {
+    timeout.tv_sec = 0;
+    timeout.tv_usec = timeoutMs * 1000;
+    timeoutp = &timeout;
+  }
 
   // Copy the descriptor maps.
   fd_set read_fds = read_fds_;
   fd_set write_fds = write_fds_;
-  int result = select(fd_watermark_, &read_fds, &write_fds, nullptr, timeoutp);
+  int result = select(fd_watermark_ + 1, &read_fds, &write_fds, nullptr, timeoutp);
   if (result == -1)
     return new PosixError();
 
@@ -95,15 +117,12 @@ SelectMessagePump::Poll(struct timeval *timeoutp)
     }
   }
 
-  return true;
+  return nullptr;
 }
 
 bool
 SelectMessagePump::handleRead(int fd)
 {
-  // We pre-emptively remove this descriptor to simulate edge-triggering.
-  FD_CLR(fd, &read_fds_);
-
   listeners_[fd].listener->OnReadReady(listeners_[fd].transport);
   return !!listeners_[fd].transport;
 }
@@ -142,4 +161,22 @@ SelectMessagePump::onClose(int fd)
   FD_CLR(fd, &write_fds_);
   listeners_[fd].transport = nullptr;
   listeners_[fd].listener = nullptr;
+
+  // If this was the watermark, find a new one.
+  if (fd == fd_watermark_) {
+    fd_watermark_ = -1;
+    for (int i = fd - 1; i >= 0; i--) {
+      if (listeners_[i].transport) {
+        fd_watermark_ = i;
+        break;
+      }
+    }
+  }
+}
+
+void
+SelectMessagePump::Interrupt()
+{
+  // Not yet implemented.
+  abort();
 }

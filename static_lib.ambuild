@@ -32,9 +32,12 @@ binary.sources += [
   'main.cpp',
   'shared/amio-errors.cc',
   'shared/amio-string.cc',
+  'posix/amio-posix.cc',
   'posix/amio-posix-errors.cc',
   'posix/amio-posix-transport.cc',
   'posix/amio-select-pump.cc',
+  'linux/amio-linux.cc',
+  'linux/amio-linux-poll.cc',
 ]
 builder.Add(binary)
 

@@ -36,6 +36,8 @@ class GenericError : public IOError
   ke::AutoArray<char> message_;
 };
 
+extern ke::Ref<GenericError> eOutOfMemory;
+extern ke::Ref<GenericError> eUnknownHangup;
 extern ke::Ref<GenericError> eTransportAlreadyRegistered;
 
 } // namespace amio
