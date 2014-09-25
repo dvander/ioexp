@@ -25,23 +25,23 @@ class WinTransport : public Transport
   // alive until the listener is notified that the event has completed. If the
   // Read() operation immediately returns an error, then no IOEvent will be
   // posted.
-  virtual PassRef<IOError> Read(ke::Ref<IOContext> context, void *buffer, size_t length) override;
+  virtual bool Read(IOResult *r, Ref<IOContext> context, void *buffer, size_t length) override;
 
   // Initiates a write operation on the supplied buffer. The buffer must be held
   // alive until the listener is notified that the event has completed. If the
   // Write() operation immediately returns an error, then no IOEvent will be
   // posted.
-  virtual PassRef<IOError> Write(ke::Ref<IOContext> context, const void *buffer, size_t length) override;
+  virtual bool Write(IOResult *r, Ref<IOContext> context, const void *buffer, size_t length) override;
 
   // Helper version of Read() that automatically allocates a new context.
   //
   // An optional data value may be communicated through the event.
-  PassRef<IOError> Read(void *buffer, size_t length, uintptr_t data = 0);
+  IOResult Read(void *buffer, size_t length, uintptr_t data = 0);
 
   // Helper version of Write() that automatically allocates a new context.
   //
   // An optional data value may be communicated through the event.
-  PassRef<IOError> Write(const void *buffer, size_t length, uintptr_t data = 0);
+  IOResult Write(const void *buffer, size_t length, uintptr_t data = 0);
 
   virtual void Close() override;
   WinTransport *toWinTransport() {

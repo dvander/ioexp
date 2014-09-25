@@ -38,88 +38,65 @@ WinTransport::Close()
   handle_ = INVALID_HANDLE_VALUE;
 }
 
-PassRef<IOError>
-WinTransport::Read(Ref<IOContext> baseContext, void *buffer, size_t length)
+bool
+WinTransport::Read(IOResult *r, Ref<IOContext> baseContext, void *buffer, size_t length)
 {
   WinContext *context = baseContext->toWinContext();
-  if (!context)
-    return eInvalidContext;
-  if (context->associated())
-    return eContextAlreadyAssociated;
-  if (length > INT_MAX)
-    return eLengthOutOfRange;
+  if (!context) {
+    *r = IOResult(eInvalidContext, baseContext);
+    return false;
+  }
+  if (context->associated()) {
+    *r = IOResult(eContextAlreadyAssociated, context);
+    return false;
+  }
+  if (length > INT_MAX) {
+    *r = IOResult(eLengthOutOfRange, context);
+    return false;
+  }
 
   // AddRef the context before we be potentially it in the port.
   context->AddRef();
+  *r = IOResult();
 
   DWORD bytesRead;
   if (ReadFile(handle_, buffer, (DWORD)length, &bytesRead, context->ov())) {
-    IOResult ev(context, nullptr);
-    ev.Bytes = bytesRead;
-    (void)ev;
     return nullptr;
   }
 
   DWORD error = GetLastError();
   switch (error) {
-   case ERROR_IO_PENDING:
+  case ERROR_IO_PENDING:
+   return nullptr;
+
+  case ERROR_HANDLE_EOF:
     return nullptr;
 
-   case ERROR_HANDLE_EOF:
-   {
-     IOResult ev(context, nullptr);
-     ev.Ended = true;
-     (void)ev;
-     return nullptr;
-   }
-
-   default:
-    return new WinError(error);
+  default:
+   *r = IOResult(new WinError(error), context);
+   return false;
   }
 }
 
 PassRef<IOError>
 WinTransport::Write(Ref<IOContext> baseContext, const void *buffer, size_t length)
 {
-  WinContext *context = baseContext->toWinContext();
-  if (!context)
-    return eInvalidContext;
-  if (context->associated())
-    return eContextAlreadyAssociated;
-  if (length > INT_MAX)
-    return eLengthOutOfRange;
-
-  // AddRef the context before we be potentially it in the port.
-  context->AddRef();
-
-  DWORD bytesWritten;
-  if (WriteFile(handle_, buffer, (DWORD)length, &bytesWritten, context->ov())) {
-    IOResult ev(context, nullptr);
-    ev.Bytes = bytesWritten;
-    (void)ev;
-    return nullptr;
-  }
-
-  DWORD error = GetLastError();
-  switch (error) {
-   case ERROR_IO_PENDING:
-    return nullptr;
-
-   default:
-    return new WinError(error);
-  }
 }
 
-PassRef<IOError>
+IOResult
 Transport::Read(void *buffer, size_t length, uintptr_t data)
 {
   Ref<IOContext> context = IOContext::New(data);
-  return Read(context, buffer, length);
+  IOResult r;
+  Read(r, context, buffer, length);
+  return r;
 }
 
-PassRef<IOError>
-Transport::Write(const void *buffer, size_t length, uintptr_t data)
+IOResult
+Transport::Write(IOResult *r, const void *buffer, size_t length, uintptr_t data)
 {
   Ref<IOContext> context = IOContext::New(data);
-  return Write(context, buffer, length);
+  IOResult r;
+  Write(r, context, buffer, length);
+  return r;
 }

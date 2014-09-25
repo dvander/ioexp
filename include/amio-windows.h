@@ -121,6 +121,9 @@ struct AMIO_CLASS IOResult
 
   IOResult() : Ended(false), Completed(false), Bytes(0)
   {}
+  IOResult(PassRef<IOError> error, PassRef<IOContext> context)
+   : Error(error), Ended(false), Completed(false), Bytes(0), Context(context)
+  {}
 };
 
 // Describes a low-level transport mechanism used in Windows. All posted
@@ -169,17 +172,17 @@ class AMIO_CLASS Transport : public ke::Refcounted<Transport>
   // Contexts must not be re-used until an IOResult is returned with the
   // context, either through immediate completion or delivery through an event
   // listener.
-  virtual PassRef<IOError> Write(ke::Ref<IOContext> context, const void *buffer, size_t length) = 0;
+  virtual bool Write(IOResult *r, ke::Ref<IOContext> context, const void *buffer, size_t length) = 0;
 
   // Helper version of Read() that automatically allocates a new context.
   //
   // An optional data value may be communicated through the event.
-  PassRef<IOError> Read(void *buffer, size_t length, uintptr_t data = 0);
+  IOResult Read(void *buffer, size_t length, uintptr_t data = 0);
 
   // Helper version of Write() that automatically allocates a new context.
   //
   // An optional data value may be communicated through the event.
-  PassRef<IOError> Write(const void *buffer, size_t length, uintptr_t data = 0);
+  IOResult Write(const void *buffer, size_t length, uintptr_t data = 0);
 
   // Close the transport, disconnecting it from any pollers.
   virtual void Close() = 0;
