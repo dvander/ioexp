@@ -55,6 +55,12 @@ EpollMessagePump::~EpollMessagePump()
 {
   if (ep_ == -1)
     return;
+
+  for (size_t i = 0; i < listeners_.length(); i++) {
+    if (listeners_[i].transport)
+      listeners_[i].transport->setPump(nullptr);
+  }
+
   close(ep_);
 }
 
