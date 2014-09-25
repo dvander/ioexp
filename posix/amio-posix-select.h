@@ -34,8 +34,8 @@ class SelectMessagePump : public PosixPump
   Ref<IOError> Initialize() override;
   void Interrupt() override;
 
-  void onReadWouldBlock(int fd) override;
-  void onWriteWouldBlock(int fd) override;
+  void onReadWouldBlock(PosixTransport *transport) override;
+  PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
   void unhook(Ref<PosixTransport> transport) override;
 
  private:

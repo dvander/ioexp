@@ -131,17 +131,20 @@ SelectMessagePump::Poll(int timeoutMs)
 }
 
 void
-SelectMessagePump::onReadWouldBlock(int fd)
+SelectMessagePump::onReadWouldBlock(PosixTransport *transport)
 {
+  int fd = transport->fd();
   assert(listeners_[fd].transport);
   FD_SET(fd, &read_fds_);
 }
 
-void
-SelectMessagePump::onWriteWouldBlock(int fd)
+PassRef<IOError>
+SelectMessagePump::onWriteWouldBlock(PosixTransport *transport)
 {
+  int fd = transport->fd();
   assert(listeners_[fd].transport);
   FD_SET(fd, &write_fds_);
+  return nullptr;
 }
 
 void

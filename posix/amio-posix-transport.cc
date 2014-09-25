@@ -53,7 +53,7 @@ PosixTransport::Read(IOResult *result, uint8_t *buffer, size_t maxlength)
   if (rv == -1) {
     if (errno == EWOULDBLOCK || errno == EAGAIN) {
       if (pump_)
-        pump_->onReadWouldBlock(fd_);
+        pump_->onReadWouldBlock(this);
       return true;
     }
 
@@ -80,7 +80,7 @@ PosixTransport::Write(IOResult *result, const uint8_t *buffer, size_t maxlength)
   if (rv == -1) {
     if (errno == EWOULDBLOCK || errno == EAGAIN) {
       if (pump_)
-        pump_->onWriteWouldBlock(fd_);
+        pump_->onWriteWouldBlock(this);
       return true;
     }
 

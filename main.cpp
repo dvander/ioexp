@@ -2,7 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <amio.h>
-#include "posix/amio-posix-select.h"
+//#include "posix/amio-posix-select.h"
+#include "bsd/amio-bsd-kqueue.h"
 
 using namespace ke;
 using namespace amio;
@@ -38,7 +39,7 @@ class InStatus : public StatusListener
 
 int main()
 {
-  SelectMessagePump pump;
+  KqueueMessagePump pump;
   MaybeTransport mt = TransportFactory::CreateFromDescriptor(0, kTransportNoFlags);
 
   Ref<IOError> error = pump.Initialize();

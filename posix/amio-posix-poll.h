@@ -38,8 +38,8 @@ class PollMessagePump : public PosixPump
   void Deregister(Ref<Transport> baseTransport) override;
   void Interrupt() override;
 
-  void onReadWouldBlock(int fd) override;
-  void onWriteWouldBlock(int fd) override;
+  void onReadWouldBlock(PosixTransport *transport) override;
+  PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
   void unhook(Ref<PosixTransport> transport) override;
 
  private:

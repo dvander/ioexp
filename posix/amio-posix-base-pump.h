@@ -19,10 +19,10 @@ class PosixPump : public MessagePump
 {
  public:
   // Notifies the pump that the socket would block reading.
-  virtual void onReadWouldBlock(int fd) = 0;
+  virtual void onReadWouldBlock(PosixTransport *transport) = 0;
 
   // Notifies the pump that the socket would block writing.
-  virtual void onWriteWouldBlock(int fd) = 0;
+  virtual ke::PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) = 0;
 
   // Notifies the pump that a socket should be removed from the event list.
   virtual void unhook(ke::Ref<PosixTransport> transport) = 0;

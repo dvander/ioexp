@@ -186,21 +186,24 @@ PollMessagePump::Interrupt()
 }
 
 void
-PollMessagePump::onReadWouldBlock(int fd)
+PollMessagePump::onReadWouldBlock(PosixTransport *transport)
 {
+  int fd = transport->fd();
   size_t slot = listeners_[fd].slot;
   assert(pollfds_[slot].fd == fd);
 
   pollfds_[slot].events |= POLLIN;
 }
 
-void
-PollMessagePump::onWriteWouldBlock(int fd)
+PassRef<IOError>
+PollMessagePump::onWriteWouldBlock(PosixTransport *transport)
 {
+  int fd = transport->fd();
   size_t slot = listeners_[fd].slot;
   assert(pollfds_[slot].fd == fd);
 
   pollfds_[slot].events |= POLLOUT;
+  return nullptr;
 }
 
 void

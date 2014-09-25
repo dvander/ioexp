@@ -23,9 +23,6 @@ using namespace amio;
 // This is passed to the kernel, which ignores it. But it has to be non-zero.
 static const size_t kInitialEpollSize = 16;
 
-// The maximum number of events to receive on a poll operation.
-static const size_t kMaxPollEvents = 256;
-
 EpollMessagePump::EpollMessagePump(size_t maxEvents)
  : ep_(-1),
    can_use_rdhup_(false),
