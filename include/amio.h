@@ -124,6 +124,10 @@ class AMIO_CLASS Transport : public ke::Refcounted<Transport>
   // to be sent. Otherwise, only a partial number of bytes may be sent. The
   // number of bytes sent may be 0 without an error occurring.
   //
+  // By default, message pumps do not listen for write events until a write
+  // event would block. To initiate write status events, you must attempt to
+  // call Write() at least once.
+  //
   // If an error occurs, |Error| will be set in |result|, and the result will
   // be false.
   virtual bool Write(IOResult *result, const uint8_t *buffer, size_t maxlength) = 0;

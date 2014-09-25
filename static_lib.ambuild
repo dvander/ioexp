@@ -37,9 +37,9 @@ binary.sources += [
   'posix/amio-posix-transport.cc',
   'posix/amio-posix-select.cc',
   'posix/amio-posix-poll.cc',
-#  'linux/amio-linux.cc',
-#  'linux/amio-linux-epoll.cc',
-  'bsd/amio-bsd-kqueue.cc',
+  'linux/amio-linux.cc',
+  'linux/amio-linux-epoll.cc',
+#  'bsd/amio-bsd-kqueue.cc',
 ]
 builder.Add(binary)
 

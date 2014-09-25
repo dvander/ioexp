@@ -132,7 +132,6 @@ KqueueMessagePump::Poll(int timeoutMs)
       break;
 
      case EVFILT_WRITE:
-      printf("got here\n");
       listeners_[slot].listener->OnWriteReady(listeners_[slot].transport);
       break;
 

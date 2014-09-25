@@ -84,7 +84,7 @@ EpollMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> lis
   }
 
   // By default we wait for reads (see the comment in the select pump).
-  int defaultEvents = EPOLLIN | EPOLLOUT | EPOLLET;
+  int defaultEvents = EPOLLIN | EPOLLET;
   if (can_use_rdhup_)
     defaultEvents |= EPOLLRDHUP;
 
@@ -102,6 +102,7 @@ EpollMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> lis
   listeners_[slot].transport = transport;
   listeners_[slot].listener = listener;
   listeners_[slot].modified = generation_;
+  listeners_[slot].watching_writes = false;
   transport->setPump(this);
   transport->setUserData(slot);
   return nullptr;
@@ -156,6 +157,7 @@ EpollMessagePump::Poll(int timeoutMs)
 
     // Handle output.
     if (ep.events & EPOLLOUT) {
+      printf("got here!\n");
       // No need to check if the event is still valid since this is the last
       // check.
       listeners_[slot].listener->OnWriteReady(listeners_[slot].transport);
@@ -173,15 +175,26 @@ EpollMessagePump::Interrupt()
 }
 
 void
-EpollMessagePump::onReadWouldBlock(int fd)
+EpollMessagePump::onReadWouldBlock(PosixTransport *transport)
 {
   // Do nothing... epoll is edge-triggered.
 }
 
-void
-EpollMessagePump::onWriteWouldBlock(int fd)
+PassRef<IOError>
+EpollMessagePump::onWriteWouldBlock(PosixTransport *transport)
 {
-  // Do nothing... epoll is edge-triggered.
+  size_t slot = transport->getUserData();
+  if (!listeners_[slot].watching_writes) {
+    // Add EPOLLOUT to the events we watch.
+    epoll_event pe;
+    pe.events = EPOLLIN | EPOLLOUT | EPOLLET;
+    if (can_use_rdhup_)
+      pe.events |= EPOLLRDHUP;
+    pe.data.ptr = (void *)slot;
+    if (epoll_ctl(ep_, EPOLL_CTL_MOD, transport->fd(), &pe) == -1)
+      return new PosixError();
+  }
+  return nullptr;
 }
 
 void
@@ -190,7 +203,7 @@ EpollMessagePump::unhook(Ref<PosixTransport> transport)
   assert(transport->pump() == this);
 
   int fd = transport->fd();
-  uintptr_t slot = transport->getUserData();
+  size_t slot = transport->getUserData();
   assert(fd != -1);
   assert(listeners_[slot].transport == transport);
 

@@ -3,7 +3,8 @@
 #include <stdlib.h>
 #include <amio.h>
 //#include "posix/amio-posix-select.h"
-#include "bsd/amio-bsd-kqueue.h"
+#include "linux/amio-linux-epoll.h"
+//#include "bsd/amio-bsd-kqueue.h"
 
 using namespace ke;
 using namespace amio;
@@ -39,7 +40,7 @@ class InStatus : public StatusListener
 
 int main()
 {
-  KqueueMessagePump pump;
+  EpollMessagePump pump;
   MaybeTransport mt = TransportFactory::CreateFromDescriptor(0, kTransportNoFlags);
 
   Ref<IOError> error = pump.Initialize();

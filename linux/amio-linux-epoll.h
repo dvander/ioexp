@@ -38,8 +38,8 @@ class EpollMessagePump : public PosixPump
   void Deregister(Ref<Transport> baseTransport) override;
   void Interrupt() override;
 
-  void onReadWouldBlock(int fd) override;
-  void onWriteWouldBlock(int fd) override;
+  void onReadWouldBlock(PosixTransport *transport) override;
+  PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
   void unhook(ke::Ref<PosixTransport> transport) override;
 
  private:
@@ -53,6 +53,7 @@ class EpollMessagePump : public PosixPump
     Ref<PosixTransport> transport;
     Ref<StatusListener> listener;
     size_t modified;
+    bool watching_writes;
   };
 
   int ep_;
