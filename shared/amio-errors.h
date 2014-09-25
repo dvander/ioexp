@@ -20,7 +20,6 @@ class GenericError : public IOError
 {
  public:
   GenericError(const char *fmt, ...);
-  ~GenericError();
 
   const char *Message() override {
     return message_;

@@ -7,9 +7,15 @@
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
-#ifndef _include_amio_header_h_
-#define _include_amio_header_h_
+#include <amio-windows.h>
+#include "amio-windows-transport.h"
 
-#include <amio-types.h>
+using namespace amio;
+using namespace ke;
 
-#endif // _include_amio_header_h_
+Ref<IOError>
+TransportFactory::CreateFromHandle(Ref<Transport> *outp, HANDLE handle, TransportFlags flags)
+{
+  *outp = new WinTransport(handle, flags);
+  return nullptr;
+}
