@@ -17,7 +17,7 @@ class PosixTransport;
 
 // Describes a low-level transport mechanism used in Posix. This is essentially
 // a wrapper around a file descriptor.
-class Transport : public ke::Refcounted<Transport>
+class AMIO_CLASS Transport : public ke::Refcounted<Transport>
 {
  public:
   virtual ~Transport()
