@@ -12,7 +12,7 @@
 
 #include "include/amio.h"
 #include "posix/amio-posix-transport.h"
-#include "posix/amio-posix-base-pump.h"
+#include "posix/amio-posix-base-poller.h"
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/epoll.h>
