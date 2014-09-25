@@ -54,7 +54,7 @@ WinTransport::Read(Ref<IOContext> baseContext, void *buffer, size_t length)
 
   DWORD bytesRead;
   if (ReadFile(handle_, buffer, (DWORD)length, &bytesRead, context->ov())) {
-    IOEvent ev(context, nullptr);
+    IOResult ev(context, nullptr);
     ev.Bytes = bytesRead;
     (void)ev;
     return nullptr;
@@ -67,7 +67,7 @@ WinTransport::Read(Ref<IOContext> baseContext, void *buffer, size_t length)
 
    case ERROR_HANDLE_EOF:
    {
-     IOEvent ev(context, nullptr);
+     IOResult ev(context, nullptr);
      ev.Ended = true;
      (void)ev;
      return nullptr;
@@ -94,7 +94,7 @@ WinTransport::Write(Ref<IOContext> baseContext, const void *buffer, size_t lengt
 
   DWORD bytesWritten;
   if (WriteFile(handle_, buffer, (DWORD)length, &bytesWritten, context->ov())) {
-    IOEvent ev(context, nullptr);
+    IOResult ev(context, nullptr);
     ev.Bytes = bytesWritten;
     (void)ev;
     return nullptr;

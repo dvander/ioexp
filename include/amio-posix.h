@@ -15,6 +15,26 @@ namespace amio {
 // Forward declarations for internal types.
 class PosixTransport;
 
+// The result of an IO operation.
+struct AMIO_CLASS IOResult
+{
+  // Set if there was an error.
+  ke::Ref<IOError> Error;
+
+  // True if a connection has received an orderly shutdown from its peer. If
+  // Ended is true, then the socket is automatically removed from the message
+  // pump.
+  bool Ended;
+
+  // Number of bytes that successfully completed. If 0 and Ended is false,
+  // then no bytes were received or sent, and the caller should wait for
+  // another read or write event to try again.
+  size_t Bytes;
+
+  IOResult() : Ended(false), Bytes(0)
+  {}
+};
+
 // Describes a low-level transport mechanism used in Posix. This is essentially
 // a wrapper around a file descriptor.
 class AMIO_CLASS Transport : public ke::Refcounted<Transport>

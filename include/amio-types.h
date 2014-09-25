@@ -49,26 +49,6 @@ class AMIO_CLASS IOError : public ke::Refcounted<IOError>
   virtual ErrorType Type() = 0;
 };
 
-// The result of an IO operation.
-struct AMIO_CLASS IOResult
-{
-  // Set if there was an error.
-  ke::Ref<IOError> Error;
-
-  // True if a connection has received an orderly shutdown from its peer. If
-  // Ended is true, then the socket is automatically removed from the message
-  // pump.
-  bool Ended;
-
-  // Number of bytes that successfully completed. If 0 and Ended is false,
-  // then no bytes were received or sent, and the caller should wait for
-  // another read or write event to try again.
-  size_t Bytes;
-
-  IOResult() : Ended(false), Bytes(0)
-  {}
-};
-
 // Specify no timeout in polling operations.
 static const int kNoTimeout = -1;
 
