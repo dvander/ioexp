@@ -40,25 +40,30 @@ class InStatus : public StatusListener
 
 int main()
 {
-  EpollMessagePump pump;
-  MaybeTransport mt = TransportFactory::CreateFromDescriptor(0, kTransportNoFlags);
-
-  Ref<IOError> error = pump.Initialize();
+  AutoPtr<Poller> poller;
+  Ref<IOError> error = PollerFactory::CreateEpollImpl(poller.address(), 256);
   if (error) {
-    fprintf(stderr, "init: %s\n", error->Message());
+    fprintf(stderr, "epoll: %s\n", error->Message());
+    return 1;
+  }
+
+  Ref<Transport> transport;
+  error = TransportFactory::CreateFromDescriptor(&transport, 0, kTransportNoFlags);
+  if (error) {
+    fprintf(stderr, "transport: %s\n", error->Message());
     return 1;
   }
 
   Ref<InStatus> status = new InStatus();
 
-  error = pump.Register(mt.transport, status);
+  error = poller->Register(transport, status);
   if (error) {
     fprintf(stderr, "register: %s\n", error->Message());
     return 1;
   }
 
   while (true) {
-    Ref<IOError> error = pump.Poll(0);
+    Ref<IOError> error = poller->Poll(0);
     if (error) {
       fprintf(stderr, "poll: %s\n", error->Message());
       return 1;

@@ -11,7 +11,7 @@
 #define _include_amio_poll_pump_h_
 
 #include "include/amio.h"
-#include "include/amio-posix-transport.h"
+#include "posix/amio-posix-transport.h"
 #include "posix/amio-posix-base-pump.h"
 #include <sys/time.h>
 #include <sys/types.h>
@@ -26,13 +26,13 @@ using namespace ke;
 // This message pump is based on poll(), which is available in glibc, Linux,
 // and BSD. Notably it is not present (as a function call) on Solaris, but
 // as a device (/dev/poll) which deserves a separate implementation.
-class PollMessagePump : public PosixPump
+class PollImpl : public PosixPoller
 {
  public:
-  PollMessagePump();
-  ~PollMessagePump();
+  PollImpl();
+  ~PollImpl();
 
-  Ref<IOError> Initialize() override;
+  Ref<IOError> Initialize();
   Ref<IOError> Poll(int timeoutMs) override;
   Ref<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) override;
   void Deregister(Ref<Transport> baseTransport) override;

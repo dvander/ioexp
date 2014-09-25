@@ -11,7 +11,7 @@
 #define _include_amio_linux_epoll_pump_h_
 
 #include "include/amio.h"
-#include "include/amio-posix-transport.h"
+#include "posix/amio-posix-transport.h"
 #include "posix/amio-posix-base-pump.h"
 #include <sys/time.h>
 #include <sys/types.h>
@@ -23,16 +23,16 @@ namespace amio {
 
 using namespace ke;
 
-static const size_t kMaxEventsPerEpoll = 256;
+static const size_t kDefaultMaxEventsPerPoll = 256;
 
 // This message pump is based on epoll(), which is available in Linux >= 2.5.44.
-class EpollMessagePump : public PosixPump
+class EpollImpl : public PosixPoller
 {
  public:
-  EpollMessagePump(size_t maxEvents = kMaxEventsPerEpoll);
-  ~EpollMessagePump();
+  EpollImpl(size_t maxEvents = kDefaultMaxEventsPerPoll);
+  ~EpollImpl();
 
-  Ref<IOError> Initialize() override;
+  Ref<IOError> Initialize();
   Ref<IOError> Poll(int timeoutMs) override;
   Ref<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) override;
   void Deregister(Ref<Transport> baseTransport) override;

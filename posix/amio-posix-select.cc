@@ -16,7 +16,7 @@
 using namespace amio;
 using namespace ke;
 
-SelectMessagePump::SelectMessagePump()
+SelectImpl::SelectImpl()
  : fd_watermark_(-1),
    max_listeners_(FD_SETSIZE),
    generation_(0)
@@ -28,7 +28,7 @@ SelectMessagePump::SelectMessagePump()
   memset(listeners_, 0, sizeof(SelectData) * max_listeners_);
 }
 
-SelectMessagePump::~SelectMessagePump()
+SelectImpl::~SelectImpl()
 {
   for (size_t i = 0; i < max_listeners_; i++) {
     if (listeners_[i].transport)
@@ -37,7 +37,7 @@ SelectMessagePump::~SelectMessagePump()
 }
 
 Ref<IOError>
-SelectMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
+SelectImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport)
@@ -67,14 +67,8 @@ SelectMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> li
   return nullptr;
 }
 
-Ref<IOError>
-SelectMessagePump::Initialize()
-{
-  return nullptr;
-}
-
 void
-SelectMessagePump::Deregister(Ref<Transport> baseTransport)
+SelectImpl::Deregister(Ref<Transport> baseTransport)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport || transport->pump() != this || transport->fd() == -1)
@@ -84,7 +78,7 @@ SelectMessagePump::Deregister(Ref<Transport> baseTransport)
 }
 
 Ref<IOError>
-SelectMessagePump::Poll(int timeoutMs)
+SelectImpl::Poll(int timeoutMs)
 {
   // Bail out early if there's nothing to listen for.
   if (fd_watermark_ == -1)
@@ -131,7 +125,7 @@ SelectMessagePump::Poll(int timeoutMs)
 }
 
 void
-SelectMessagePump::onReadWouldBlock(PosixTransport *transport)
+SelectImpl::onReadWouldBlock(PosixTransport *transport)
 {
   int fd = transport->fd();
   assert(listeners_[fd].transport);
@@ -139,7 +133,7 @@ SelectMessagePump::onReadWouldBlock(PosixTransport *transport)
 }
 
 PassRef<IOError>
-SelectMessagePump::onWriteWouldBlock(PosixTransport *transport)
+SelectImpl::onWriteWouldBlock(PosixTransport *transport)
 {
   int fd = transport->fd();
   assert(listeners_[fd].transport);
@@ -148,7 +142,7 @@ SelectMessagePump::onWriteWouldBlock(PosixTransport *transport)
 }
 
 void
-SelectMessagePump::unhook(Ref<PosixTransport> transport)
+SelectImpl::unhook(Ref<PosixTransport> transport)
 {
   int fd = transport->fd();
   assert(fd != -1);
@@ -175,7 +169,7 @@ SelectMessagePump::unhook(Ref<PosixTransport> transport)
 }
 
 void
-SelectMessagePump::Interrupt()
+SelectImpl::Interrupt()
 {
   // Not yet implemented.
   abort();

@@ -8,8 +8,12 @@
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
 #include "include/amio.h"
-#include "include/amio-posix-transport.h"
+#include "posix/amio-posix-transport.h"
 #include "posix/amio-posix-errors.h"
+#include "posix/amio-posix-select.h"
+#if defined(AMIO_POLL_AVAILABLE)
+# include "posix/amio-posix-poll.h"
+#endif
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -29,21 +33,22 @@ SetNonBlocking(int fd)
   return nullptr;
 }
 
-MaybeTransport
-TransportFactory::CreateFromDescriptor(int fd, TransportFlags flags)
+Ref<IOError>
+TransportFactory::CreateFromDescriptor(Ref<Transport> *outp, int fd, TransportFlags flags)
 {
   Ref<IOError> error = SetNonBlocking(fd);
   if (error)
-    return MaybeTransport(error);
-  return MaybeTransport(new PosixTransport(fd, flags));
+    return error;
+  *outp = new PosixTransport(fd, flags);
+  return nullptr;
 }
 
-MaybeError
+Ref<IOError>
 TransportFactory::CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp)
 {
   int fds[2];
   if (pipe(fds) == -1)
-    return MaybeError(new PosixError());
+    return new PosixError();
 
   Ref<IOError> error;
   if (((error = SetNonBlocking(fds[0])) != nullptr) ||
@@ -51,10 +56,30 @@ TransportFactory::CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp)
   {
     close(fds[0]);
     close(fds[1]);
-    return MaybeError(error);
+    return error;
   }
 
   *readerp = new PosixTransport(fds[0], kTransportDefaultFlags);
   *writerp = new PosixTransport(fds[1], kTransportDefaultFlags);
-  return MaybeError();
+  return nullptr;
 }
+
+Ref<IOError>
+PollerFactory::CreateSelectImpl(Poller **outp)
+{
+  *outp = new SelectImpl();
+  return nullptr;
+}
+
+#if defined(AMIO_POLL_AVAILABLE)
+Ref<IOError>
+PollerFactory::CreatePollImpl(Poller **outp)
+{
+  AutoPtr<PollImpl> poller(new PollImpl());
+  Ref<IOError> error = poller->Initialize();
+  if (error)
+    return error;
+  *outp = poller.take();
+  return nullptr;
+}
+#endif

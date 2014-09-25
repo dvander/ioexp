@@ -11,7 +11,7 @@
 #define _include_amio_select_pump_h_
 
 #include "include/amio.h"
-#include "include/amio-posix-transport.h"
+#include "posix/amio-posix-transport.h"
 #include "posix/amio-posix-base-pump.h"
 #include <sys/select.h>
 #include <sys/time.h>
@@ -22,16 +22,15 @@ namespace amio {
 
 using namespace ke;
 
-class SelectMessagePump : public PosixPump
+class SelectImpl : public PosixPoller
 {
  public:
-  SelectMessagePump();
-  ~SelectMessagePump();
+  SelectImpl();
+  ~SelectImpl();
 
   Ref<IOError> Poll(int timeoutMs) override;
   Ref<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) override;
   void Deregister(Ref<Transport> baseTransport) override;
-  Ref<IOError> Initialize() override;
   void Interrupt() override;
 
   void onReadWouldBlock(PosixTransport *transport) override;

@@ -23,7 +23,7 @@ using namespace amio;
 // This is passed to the kernel, which ignores it. But it has to be non-zero.
 static const size_t kInitialEpollSize = 16;
 
-EpollMessagePump::EpollMessagePump(size_t maxEvents)
+EpollImpl::EpollImpl(size_t maxEvents)
  : ep_(-1),
    can_use_rdhup_(false),
    generation_(0),
@@ -36,7 +36,7 @@ EpollMessagePump::EpollMessagePump(size_t maxEvents)
 }
 
 Ref<IOError>
-EpollMessagePump::Initialize()
+EpollImpl::Initialize()
 {
   if ((ep_ = epoll_create(kInitialEpollSize)) == -1)
     return new PosixError();
@@ -48,7 +48,7 @@ EpollMessagePump::Initialize()
   return nullptr;
 }
 
-EpollMessagePump::~EpollMessagePump()
+EpollImpl::~EpollImpl()
 {
   if (ep_ == -1)
     return;
@@ -62,7 +62,7 @@ EpollMessagePump::~EpollMessagePump()
 }
 
 Ref<IOError>
-EpollMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
+EpollImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport)
@@ -109,7 +109,7 @@ EpollMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> lis
 }
 
 void
-EpollMessagePump::Deregister(Ref<Transport> baseTransport)
+EpollImpl::Deregister(Ref<Transport> baseTransport)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport || transport->pump() != this || transport->fd() == -1)
@@ -119,7 +119,7 @@ EpollMessagePump::Deregister(Ref<Transport> baseTransport)
 }
 
 Ref<IOError>
-EpollMessagePump::Poll(int timeoutMs)
+EpollImpl::Poll(int timeoutMs)
 {
   int nevents = epoll_wait(ep_, event_buffer_, max_events_, timeoutMs);
   if (nevents == -1)
@@ -157,7 +157,6 @@ EpollMessagePump::Poll(int timeoutMs)
 
     // Handle output.
     if (ep.events & EPOLLOUT) {
-      printf("got here!\n");
       // No need to check if the event is still valid since this is the last
       // check.
       listeners_[slot].listener->OnWriteReady(listeners_[slot].transport);
@@ -168,20 +167,20 @@ EpollMessagePump::Poll(int timeoutMs)
 }
 
 void
-EpollMessagePump::Interrupt()
+EpollImpl::Interrupt()
 {
   // Not yet implemented.
   abort();
 }
 
 void
-EpollMessagePump::onReadWouldBlock(PosixTransport *transport)
+EpollImpl::onReadWouldBlock(PosixTransport *transport)
 {
   // Do nothing... epoll is edge-triggered.
 }
 
 PassRef<IOError>
-EpollMessagePump::onWriteWouldBlock(PosixTransport *transport)
+EpollImpl::onWriteWouldBlock(PosixTransport *transport)
 {
   size_t slot = transport->getUserData();
   if (!listeners_[slot].watching_writes) {
@@ -199,7 +198,7 @@ EpollMessagePump::onWriteWouldBlock(PosixTransport *transport)
 }
 
 void
-EpollMessagePump::unhook(Ref<PosixTransport> transport)
+EpollImpl::unhook(Ref<PosixTransport> transport)
 {
   assert(transport->pump() == this);
 

@@ -8,9 +8,10 @@
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
 #include "include/amio.h"
-#include "include/amio-posix-transport.h"
+#include "posix/amio-posix-transport.h"
 #include "posix/amio-posix-errors.h"
 #include "linux/amio-linux.h"
+#include "linux/amio-linux-epoll.h"
 #include <string.h>
 #include <stdlib.h>
 #include <sys/utsname.h>
@@ -40,4 +41,23 @@ amio::GetLinuxVersion(int *major, int *minor, int *release)
   else
     *release = atoi(minsplit + 1);
   return true;
+}
+
+Ref<IOError>
+PollerFactory::CreateEpollImpl(Poller **outp, size_t maxEventsPerPoll)
+{
+  AutoPtr<EpollImpl> poller(new EpollImpl(maxEventsPerPoll));
+  Ref<IOError> error = poller->Initialize();
+  if (error)
+    return error;
+  *outp = poller.take();
+  return nullptr;
+}
+
+Ref<IOError>
+PollerFactory::CreatePoller(Poller **outp)
+{
+  if (IsAtLeastLinux(2, 5, 44))
+    return CreateEpollImpl(outp, kDefaultMaxEventsPerPoll);
+  return PollerFactory::CreatePollImpl(outp);
 }

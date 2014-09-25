@@ -11,11 +11,12 @@
 #define _include_amio_base_pump_h_
 
 #include "include/amio.h"
-#include "include/amio-posix-transport.h"
+#include "include/amio-posix.h"
+#include "posix/amio-posix-transport.h"
 
 namespace amio {
 
-class PosixPump : public MessagePump
+class PosixPoller : public Poller
 {
  public:
   // Notifies the pump that the socket would block reading.

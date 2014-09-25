@@ -22,7 +22,7 @@ using namespace amio;
 
 static const size_t kInitialPollSize = 4096;
 
-PollMessagePump::PollMessagePump()
+PollImpl::PollImpl()
  : generation_(0)
 {
 #if defined(__linux__)
@@ -32,7 +32,7 @@ PollMessagePump::PollMessagePump()
 #endif
 }
 
-PollMessagePump::~PollMessagePump()
+PollImpl::~PollImpl()
 {
   for (size_t i = 0; i < pollfds_.length(); i++) {
     int fd = pollfds_[i].fd;
@@ -45,7 +45,7 @@ PollMessagePump::~PollMessagePump()
 }
 
 Ref<IOError>
-PollMessagePump::Initialize()
+PollImpl::Initialize()
 {
   if (!listeners_.resize(kInitialPollSize))
     return eOutOfMemory;
@@ -53,7 +53,7 @@ PollMessagePump::Initialize()
 }
 
 Ref<IOError>
-PollMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
+PollImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport)
@@ -100,7 +100,7 @@ PollMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> list
 }
 
 void
-PollMessagePump::Deregister(Ref<Transport> baseTransport)
+PollImpl::Deregister(Ref<Transport> baseTransport)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport || transport->pump() != this || transport->fd() == -1)
@@ -110,7 +110,7 @@ PollMessagePump::Deregister(Ref<Transport> baseTransport)
 }
 
 Ref<IOError>
-PollMessagePump::Poll(int timeoutMs)
+PollImpl::Poll(int timeoutMs)
 {
   int nevents = poll(pollfds_.buffer(), pollfds_.length(), timeoutMs);
   if (nevents == -1)
@@ -179,14 +179,14 @@ PollMessagePump::Poll(int timeoutMs)
 }
 
 void
-PollMessagePump::Interrupt()
+PollImpl::Interrupt()
 {
   // Not yet implemented.
   abort();
 }
 
 void
-PollMessagePump::onReadWouldBlock(PosixTransport *transport)
+PollImpl::onReadWouldBlock(PosixTransport *transport)
 {
   int fd = transport->fd();
   size_t slot = listeners_[fd].slot;
@@ -196,7 +196,7 @@ PollMessagePump::onReadWouldBlock(PosixTransport *transport)
 }
 
 PassRef<IOError>
-PollMessagePump::onWriteWouldBlock(PosixTransport *transport)
+PollImpl::onWriteWouldBlock(PosixTransport *transport)
 {
   int fd = transport->fd();
   size_t slot = listeners_[fd].slot;
@@ -207,7 +207,7 @@ PollMessagePump::onWriteWouldBlock(PosixTransport *transport)
 }
 
 void
-PollMessagePump::unhook(Ref<PosixTransport> transport)
+PollImpl::unhook(Ref<PosixTransport> transport)
 {
   int fd = transport->fd();
   assert(fd != -1);
