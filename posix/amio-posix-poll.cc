@@ -23,10 +23,10 @@ using namespace amio;
 static const size_t kInitialPollSize = 4096;
 
 PollMessagePump::PollMessagePump()
- : can_use_rdhup_(false),
-   generation_(0)
+ : generation_(0)
 {
 #if defined(__linux__)
+  can_use_rdhup_ = false;
   if (IsAtLeastLinux(2, 6, 17))
     can_use_rdhup_ = true;
 #endif

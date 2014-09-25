@@ -2,8 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <amio.h>
-//#include "posix/amio-posix-poll.h"
-#include "linux/amio-linux-epoll.h"
+#include "posix/amio-posix-select.h"
 
 using namespace ke;
 using namespace amio;
@@ -39,7 +38,7 @@ class InStatus : public StatusListener
 
 int main()
 {
-  EpollMessagePump pump;
+  SelectMessagePump pump;
   MaybeTransport mt = TransportFactory::CreateFromDescriptor(0, kTransportNoFlags);
 
   Ref<IOError> error = pump.Initialize();

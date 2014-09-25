@@ -59,7 +59,9 @@ class PollMessagePump : public PosixPump
     {}
   };
 
+#if defined(__linux__)
   bool can_use_rdhup_;
+#endif
   uintptr_t generation_;
   ke::Vector<struct pollfd> pollfds_;
   ke::Vector<PollData> listeners_;

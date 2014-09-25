@@ -35,7 +35,7 @@ PosixError::Message()
   if (computed_message_)
     return message_;
 
-#if (_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600) && ! _GNU_SOURCE
+#if !defined(__linux__) || ((_POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600) && ! _GNU_SOURCE)
   if (strerror_r(errcode_, message_, sizeof(message_)) != 0)
     snprintf(message_, sizeof(message_), "Unknown error %d", errcode_);
 #else
