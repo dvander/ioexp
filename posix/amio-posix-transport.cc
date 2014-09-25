@@ -31,11 +31,13 @@ PosixTransport::~PosixTransport()
 void
 PosixTransport::Close()
 {
-  if (fd_ == -1)
+  if (fd_ == -1) {
+    assert(!pump_);
     return;
+  }
 
   if (pump_)
-    pump_->onClose(fd_);
+    pump_->unhook(this);
 
   close(fd_);
   fd_ = -1;
@@ -60,7 +62,7 @@ PosixTransport::Read(IOResult *result, uint8_t *buffer, size_t maxlength)
   }
 
   if (rv == 0) {
-    pump_->onClose(fd_);
+    pump_->unhook(this);
     result->Ended = true;
     return true;
   }

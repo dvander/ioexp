@@ -11,6 +11,7 @@
 #define _include_amio_base_pump_h_
 
 #include "include/amio.h"
+#include "include/amio-posix-transport.h"
 
 namespace amio {
 
@@ -23,8 +24,8 @@ class PosixPump : public MessagePump
   // Notifies the pump that the socket would block writing.
   virtual void onWriteWouldBlock(int fd) = 0;
 
-  // Notifies the pump that the socket has been closed or an error has occurred.
-  virtual void onClose(int fd) = 0;
+  // Notifies the pump that a socket should be removed from the event list.
+  virtual void unhook(ke::Ref<PosixTransport> transport) = 0;
 };
 
 } // namespace amio

@@ -7,15 +7,15 @@
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
-#ifndef _include_amio_poll_pump_h_
-#define _include_amio_poll_pump_h_
+#ifndef _include_amio_linux_epoll_pump_h_
+#define _include_amio_linux_epoll_pump_h_
 
 #include "include/amio.h"
 #include "include/amio-posix-transport.h"
 #include "posix/amio-posix-base-pump.h"
 #include <sys/time.h>
 #include <sys/types.h>
-#include <sys/poll.h>
+#include <sys/epoll.h>
 #include <am-utility.h>
 #include <am-vector.h>
 
@@ -23,14 +23,16 @@ namespace amio {
 
 using namespace ke;
 
+static const size_t kMaxEventsPerEpoll = 256;
+
 // This message pump is based on poll(), which is available in glibc, Linux,
 // and BSD. Notably it is not present (as a function call) on Solaris, but
 // as a device (/dev/poll) which deserves a separate implementation.
-class PollMessagePump : public PosixPump
+class EpollMessagePump : public PosixPump
 {
  public:
-  PollMessagePump();
-  ~PollMessagePump();
+  EpollMessagePump(size_t maxEvents = kMaxEventsPerEpoll);
+  ~EpollMessagePump();
 
   Ref<IOError> Initialize() override;
   Ref<IOError> Poll(int timeoutMs) override;
@@ -40,7 +42,7 @@ class PollMessagePump : public PosixPump
 
   void onReadWouldBlock(int fd) override;
   void onWriteWouldBlock(int fd) override;
-  void unhook(Ref<PosixTransport> transport) override;
+  void unhook(ke::Ref<PosixTransport> transport) override;
 
  private:
   bool isEventValid(size_t slot) const {
@@ -52,21 +54,21 @@ class PollMessagePump : public PosixPump
   struct PollData {
     Ref<PosixTransport> transport;
     Ref<StatusListener> listener;
-    size_t slot;
-    uintptr_t modified;
-
-    PollData() : modified(0)
-    {}
+    size_t modified;
   };
 
+  int ep_;
   bool can_use_rdhup_;
-  uintptr_t generation_;
-  ke::Vector<struct pollfd> pollfds_;
+  size_t generation_;
   ke::Vector<PollData> listeners_;
   ke::Vector<size_t> free_slots_;
+
+  size_t max_events_;
+  ke::AutoArray<epoll_event> event_buffer_;
 };
 
 } // namespace amio
 
-#endif // _include_amio_poll_pump_h_
+#endif // _include_amio_linux_epoll_pump_h_
+
 

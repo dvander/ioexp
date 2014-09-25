@@ -51,8 +51,17 @@ class PosixTransport : public Transport
     return pump_;
   }
 
+  // These are used by message pumps; they should not be called from outside.
+  void setUserData(uintptr_t userdata) {
+    userdata_ = userdata;
+  }
+  uintptr_t getUserData() const {
+    return userdata_;
+  }
+
  private:
   int fd_;
+  uintptr_t userdata_;
   TransportFlags flags_;
   PosixPump *pump_;
 };

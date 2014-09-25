@@ -52,7 +52,9 @@ struct AMIO_CLASS IOResult
   // Set if there was an error.
   ke::Ref<IOError> Error;
 
-  // True if a connection has received an orderly shutdown from its peer.
+  // True if a connection has received an orderly shutdown from its peer. If
+  // Ended is true, then the socket is automatically removed from the message
+  // pump.
   bool Ended;
 
   // Number of bytes that successfully completed. If 0 and Ended is false,
@@ -230,7 +232,9 @@ class AMIO_CLASS MessagePump
    virtual Ref<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) = 0;
 
    // Deregisters a transport from a pump. This happens automatically if the
-   // transport is closed.
+   // transport is closed, a status error or hangup is generated, or a Read()
+   // operation returns Ended. It is safe to deregister a transport multiple
+   // times.
    virtual void Deregister(Ref<Transport> transport) = 0;
 };
 

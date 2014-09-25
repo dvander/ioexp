@@ -36,22 +36,28 @@ class SelectMessagePump : public PosixPump
 
   void onReadWouldBlock(int fd) override;
   void onWriteWouldBlock(int fd) override;
-  void onClose(int fd) override;
+  void unhook(Ref<PosixTransport> transport) override;
 
  private:
-  bool handleRead(int fd);
-  bool handleWrite(int fd);
+  bool isEventValid(size_t slot) const {
+    return listeners_[slot].modified != generation_;
+  }
 
  private:
   struct SelectData {
     Ref<PosixTransport> transport;
     Ref<StatusListener> listener;
+    uintptr_t modified;
+
+    SelectData() : modified(0)
+    {}
   };
 
   int fd_watermark_;
   fd_set read_fds_;
   fd_set write_fds_;
   size_t max_listeners_;
+  uintptr_t generation_;
   AutoArray<SelectData> listeners_;
 };
 

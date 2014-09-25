@@ -13,13 +13,18 @@
 #include "linux/amio-linux.h"
 #include <sys/poll.h>
 
+#if defined(__linux__) && !defined(POLLRDHUP)
+# define POLLRDHUP 0x2000
+#endif
+
 using namespace ke;
 using namespace amio;
 
 static const size_t kInitialPollSize = 4096;
 
 PollMessagePump::PollMessagePump()
- : can_use_rdhup_(false)
+ : can_use_rdhup_(false),
+   generation_(0)
 {
 #if defined(__linux__)
   if (IsAtLeastLinux(2, 6, 17))
@@ -29,6 +34,14 @@ PollMessagePump::PollMessagePump()
 
 PollMessagePump::~PollMessagePump()
 {
+  for (size_t i = 0; i < pollfds_.length(); i++) {
+    int fd = pollfds_[i].fd;
+    if (fd == -1)
+      continue;
+
+    if (listeners_[fd].transport)
+      listeners_[fd].transport->setPump(nullptr);
+  }
 }
 
 Ref<IOError>
@@ -78,9 +91,11 @@ PollMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> list
     pollfds_[slot] = pe;
   }
 
+  transport->setPump(this);
   listeners_[transport->fd()].transport = transport;
   listeners_[transport->fd()].listener = listener;
   listeners_[transport->fd()].slot = slot;
+  listeners_[transport->fd()].modified = generation_;
   return nullptr;
 }
 
@@ -88,10 +103,10 @@ void
 PollMessagePump::Deregister(Ref<Transport> baseTransport)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
-  if (transport->fd() == -1)
+  if (!transport || transport->pump() != this || transport->fd() == -1)
     return;
 
-  onClose(transport->fd());
+  unhook(transport);
 }
 
 Ref<IOError>
@@ -103,6 +118,7 @@ PollMessagePump::Poll(int timeoutMs)
   if (nevents == 0)
     return nullptr;
 
+  generation_++;
   for (size_t i = 0; i < pollfds_.length() && nevents > 0; i++) {
     int revents = pollfds_[i].revents;
     if (revents == 0)
@@ -112,36 +128,50 @@ PollMessagePump::Poll(int timeoutMs)
     nevents--;
 
     // We have to check this in case the list changes during iteration.
-    if (size_t(fd) >= listeners_.length() || !listeners_[fd].transport)
+    if (!isEventValid(fd))
       continue;
 
-#if defined(__linux__)
-    if (revents & POLLRDHUP) {
-      Ref<Transport> transport = listeners_[fd].transport;
-      Ref<StatusListener> listener = listeners_[fd].listener;
-      onClose(fd);
-      listener->OnHangup(transport);
+    // Handle errors first.
+    if (revents & POLLERR) {
+      // Get a local copy of the poll data before we wipe it out.
+      PollData data = listeners_[fd];
+      unhook(data.transport);
+      data.listener->OnError(data.transport, eUnknownHangup);
       continue;
     }
-#endif
 
-    if (revents & POLLHUP) {
-      Ref<Transport> transport = listeners_[fd].transport;
-      Ref<StatusListener> listener = listeners_[fd].listener;
-      onClose(fd);
-      listener->OnError(transport, eUnknownHangup);
-      continue;
-    }
+    // Prioritize POLLIN over POLLHUP/POLLRDHUP.
     if (revents & POLLIN) {
+      // Remove the flag to simulate edge-triggering.
+      pollfds_[fd].events &= ~POLLIN;
+
       listeners_[fd].listener->OnReadReady(listeners_[fd].transport);
-      if (!listeners_[fd].transport)
+      if (!isEventValid(fd))
         continue;
     }
+
+    // Handle explicit hangup.
+#if defined(__linux__)
+    if (revents & (POLLRDHUP|POLLHUP))
+#else
+    if (revents & POLLHUP)
+#endif
+    {
+      // Get a local copy of the poll data before we wipe it out.
+      PollData data = listeners_[fd];
+      unhook(data.transport);
+      data.listener->OnHangup(data.transport);
+      continue;
+    }
+
+    // Handle output.
     if (revents & POLLOUT) {
+      // Remove the flag to simulate edge-triggering.
       pollfds_[fd].events &= ~POLLOUT;
+
+      // This is the last event we handle, so we don't need any re-entrancy
+      // checks.
       listeners_[fd].listener->OnWriteReady(listeners_[fd].transport);
-      if (!listeners_[fd].transport)
-        continue;
     }
   }
 
@@ -174,15 +204,20 @@ PollMessagePump::onWriteWouldBlock(int fd)
 }
 
 void
-PollMessagePump::onClose(int fd)
+PollMessagePump::unhook(Ref<PosixTransport> transport)
 {
-  if (!listeners_[fd].transport || listeners_[fd].transport->pump() != this)
-    return;
+  int fd = transport->fd();
+  assert(fd != -1);
+  assert(listeners_[fd].transport == transport);
+
   size_t slot = listeners_[fd].slot;
   assert(pollfds_[slot].fd == fd);
 
   pollfds_[slot].fd = -1;
   listeners_[fd].transport = nullptr;
   listeners_[fd].listener = nullptr;
+  listeners_[fd].modified = generation_;
   free_slots_.append(slot);
+
+  transport->setPump(nullptr);
 }

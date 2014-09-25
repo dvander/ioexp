@@ -18,7 +18,8 @@ using namespace ke;
 
 SelectMessagePump::SelectMessagePump()
  : fd_watermark_(-1),
-   max_listeners_(FD_SETSIZE)
+   max_listeners_(FD_SETSIZE),
+   generation_(0)
 {
   FD_ZERO(&read_fds_);
   FD_ZERO(&write_fds_);
@@ -54,6 +55,7 @@ SelectMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> li
   transport->setPump(this);
   listeners_[transport->fd()].transport = transport;
   listeners_[transport->fd()].listener = listener;
+  listeners_[transport->fd()].modified = generation_;
 
   if (transport->fd() > fd_watermark_)
     fd_watermark_ = transport->fd();
@@ -75,10 +77,10 @@ void
 SelectMessagePump::Deregister(Ref<Transport> baseTransport)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
-  if (transport->fd() == -1)
+  if (!transport || transport->pump() != this || transport->fd() == -1)
     return;
 
-  onClose(transport->fd());
+  unhook(transport);
 }
 
 Ref<IOError>
@@ -103,38 +105,29 @@ SelectMessagePump::Poll(int timeoutMs)
   if (result == -1)
     return new PosixError();
 
+  generation_++;
   for (size_t i = 0; i < max_listeners_; i++) {
-    if (!listeners_[i].transport)
+    // Make sure this transport wasn't swapped out or removed.
+    if (!isEventValid(i))
       continue;
 
     if (FD_ISSET(i, &read_fds)) {
-      if (!handleRead(i))
+      // We pre-emptively remove this descriptor to simulate edge-triggering.
+      FD_CLR(i, &read_fds_);
+
+      listeners_[i].listener->OnReadReady(listeners_[i].transport);
+      if (!isEventValid(i))
         continue;
     }
     if (FD_ISSET(i, &write_fds)) {
-      if (!handleWrite(i))
-        continue;
+      // We pre-emptively remove this descriptor to simulate edge-triggering.
+      FD_CLR(i, &write_fds_);
+
+      listeners_[i].listener->OnWriteReady(listeners_[i].transport);
     }
   }
 
   return nullptr;
-}
-
-bool
-SelectMessagePump::handleRead(int fd)
-{
-  listeners_[fd].listener->OnReadReady(listeners_[fd].transport);
-  return !!listeners_[fd].transport;
-}
-
-bool
-SelectMessagePump::handleWrite(int fd)
-{
-  // We pre-emptively remove this descriptor to simulate edge-triggering.
-  FD_CLR(fd, &write_fds_);
-
-  listeners_[fd].listener->OnWriteReady(listeners_[fd].transport);
-  return !!listeners_[fd].transport;
 }
 
 void
@@ -152,15 +145,17 @@ SelectMessagePump::onWriteWouldBlock(int fd)
 }
 
 void
-SelectMessagePump::onClose(int fd)
+SelectMessagePump::unhook(Ref<PosixTransport> transport)
 {
-  if (!listeners_[fd].transport || listeners_[fd].transport->pump() != this)
-    return;
+  int fd = transport->fd();
+  assert(fd != -1);
+  assert(listeners_[fd].transport == transport);
 
   FD_CLR(fd, &read_fds_);
   FD_CLR(fd, &write_fds_);
   listeners_[fd].transport = nullptr;
   listeners_[fd].listener = nullptr;
+  listeners_[fd].modified = generation_;
 
   // If this was the watermark, find a new one.
   if (fd == fd_watermark_) {
@@ -172,6 +167,8 @@ SelectMessagePump::onClose(int fd)
       }
     }
   }
+
+  transport->setPump(nullptr);
 }
 
 void

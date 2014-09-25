@@ -2,7 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <amio.h>
-#include "posix/amio-posix-poll.h"
+//#include "posix/amio-posix-poll.h"
+#include "linux/amio-linux-epoll.h"
 
 using namespace ke;
 using namespace amio;
@@ -16,6 +17,7 @@ class InStatus : public StatusListener
       uint8_t buffer[255];
       if (!transport->Read(&result, buffer, sizeof(buffer)))
         abort();
+      printf("got bytes: %ld\n", result.Bytes);
       if (result.Ended)
         abort();
       if (!result.Bytes)
@@ -37,16 +39,28 @@ class InStatus : public StatusListener
 
 int main()
 {
-  PollMessagePump pump;
+  EpollMessagePump pump;
   MaybeTransport mt = TransportFactory::CreateFromDescriptor(0, kTransportNoFlags);
 
-  InStatus status;
-  if (pump.Register(mt.transport, &status))
-    abort();
+  Ref<IOError> error = pump.Initialize();
+  if (error) {
+    fprintf(stderr, "init: %s\n", error->Message());
+    return 1;
+  }
+
+  Ref<InStatus> status = new InStatus();
+
+  error = pump.Register(mt.transport, status);
+  if (error) {
+    fprintf(stderr, "register: %s\n", error->Message());
+    return 1;
+  }
 
   while (true) {
     Ref<IOError> error = pump.Poll(0);
-    if (error)
-      abort();
+    if (error) {
+      fprintf(stderr, "poll: %s\n", error->Message());
+      return 1;
+    }
   }
 }

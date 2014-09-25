@@ -38,6 +38,7 @@ binary.sources += [
   'posix/amio-posix-select.cc',
   'posix/amio-posix-poll.cc',
   'linux/amio-linux.cc',
+  'linux/amio-linux-epoll.cc',
 ]
 builder.Add(binary)
 
