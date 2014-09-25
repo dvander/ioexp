@@ -193,7 +193,7 @@ EpollMessagePump::onWriteWouldBlock(PosixTransport *transport)
     pe.data.ptr = (void *)slot;
     if (epoll_ctl(ep_, EPOLL_CTL_MOD, transport->fd(), &pe) == -1)
       return new PosixError();
-    listeners_[sliot].watching_writes = true;
+    listeners_[slot].watching_writes = true;
   }
   return nullptr;
 }
