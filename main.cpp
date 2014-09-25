@@ -2,8 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <amio.h>
+#include <amio-posix.h>
 //#include "posix/amio-posix-select.h"
-#include "linux/amio-linux-epoll.h"
+//#include "linux/amio-linux-epoll.h"
 //#include "bsd/amio-bsd-kqueue.h"
 
 using namespace ke;
@@ -41,7 +42,7 @@ class InStatus : public StatusListener
 int main()
 {
   AutoPtr<Poller> poller;
-  Ref<IOError> error = PollerFactory::CreateEpollImpl(poller.address(), 256);
+  Ref<IOError> error = PollerFactory::CreatePoller(poller.address());
   if (error) {
     fprintf(stderr, "epoll: %s\n", error->Message());
     return 1;

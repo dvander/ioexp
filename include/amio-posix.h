@@ -152,11 +152,12 @@ class AMIO_CLASS PollerFactory
 
 #if defined(__linux__)
   // Create a message pump based on epoll(). By default maxEventsPerPoll is 
-  // 256, when used through CreatePoller().
-  static Ref<IOError> CreateEpollImpl(Poller **outp, size_t maxEventsPerPoll);
+  // 256, when used through CreatePoller(). Use 0 for the default.
+  static Ref<IOError> CreateEpollImpl(Poller **outp, size_t maxEventsPerPoll = 0);
 #elif defined(__APPLE__) || defined(BSD) || defined(__MACH__)
-  // Create a message pump based on kqueue().
-  static Ref<IOError> CreateKqueueImpl(Poller **outp);
+  // Create a message pump based on kqueue(). By default maxEventsPerPoll is
+  // 256, when used through CreatePoller(). Use 0 for the default.
+  static Ref<IOError> CreateKqueueImpl(Poller **outp, size_t maxEventsPerPoll = 0);
 #endif
 };
 

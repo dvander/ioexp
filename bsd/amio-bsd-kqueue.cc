@@ -14,14 +14,14 @@
 using namespace ke;
 using namespace amio;
 
-KqueueMessagePump::KqueueMessagePump(size_t maxEvents)
+KqueueImpl::KqueueImpl(size_t maxEvents)
  : kq_(-1),
    generation_(0),
-   max_events_(maxEvents)
+   max_events_(maxEvents ? maxEvents : kDefaultMaxEventsPerPoll)
 {
 }
 
-KqueueMessagePump::~KqueueMessagePump()
+KqueueImpl::~KqueueImpl()
 {
   if (kq_ == -1)
     return;
@@ -35,7 +35,7 @@ KqueueMessagePump::~KqueueMessagePump()
 }
 
 Ref<IOError>
-KqueueMessagePump::Initialize()
+KqueueImpl::Initialize()
 {
   if ((kq_ = kqueue()) == -1)
     return new PosixError();
@@ -48,7 +48,7 @@ KqueueMessagePump::Initialize()
 }
 
 Ref<IOError>
-KqueueMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
+KqueueImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport)
@@ -88,7 +88,7 @@ KqueueMessagePump::Register(Ref<Transport> baseTransport, Ref<StatusListener> li
 }
 
 void
-KqueueMessagePump::Deregister(Ref<Transport> baseTransport)
+KqueueImpl::Deregister(Ref<Transport> baseTransport)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport || transport->pump() != this || transport->fd() == -1)
@@ -98,7 +98,7 @@ KqueueMessagePump::Deregister(Ref<Transport> baseTransport)
 }
 
 Ref<IOError>
-KqueueMessagePump::Poll(int timeoutMs)
+KqueueImpl::Poll(int timeoutMs)
 {
   struct timespec timeout;
   struct timespec *timeoutp = nullptr;
@@ -144,20 +144,20 @@ KqueueMessagePump::Poll(int timeoutMs)
 }
 
 void
-KqueueMessagePump::Interrupt()
+KqueueImpl::Interrupt()
 {
   // Not yet implemented.
   abort();
 }
 
 void
-KqueueMessagePump::onReadWouldBlock(PosixTransport *transport)
+KqueueImpl::onReadWouldBlock(PosixTransport *transport)
 {
   // Do nothing... kqueue is edge-triggered.
 }
 
 PassRef<IOError>
-KqueueMessagePump::onWriteWouldBlock(PosixTransport *transport)
+KqueueImpl::onWriteWouldBlock(PosixTransport *transport)
 {
   // By default we don't listen to writes until a write is requested.
   size_t slot = transport->getUserData();
@@ -173,7 +173,7 @@ KqueueMessagePump::onWriteWouldBlock(PosixTransport *transport)
 }
 
 void
-KqueueMessagePump::unhook(Ref<PosixTransport> transport)
+KqueueImpl::unhook(Ref<PosixTransport> transport)
 {
   assert(transport->pump() == this);
 

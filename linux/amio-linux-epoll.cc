@@ -27,7 +27,7 @@ EpollImpl::EpollImpl(size_t maxEvents)
  : ep_(-1),
    can_use_rdhup_(false),
    generation_(0),
-   max_events_(maxEvents)
+   max_events_(maxEvents ? maxEvents : kDefaultMaxEventsPerPoll)
 {
 #if defined(__linux__)
   if (IsAtLeastLinux(2, 6, 17))

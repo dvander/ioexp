@@ -9,7 +9,7 @@
 //
 #include "posix/amio-posix-transport.h"
 #include "posix/amio-posix-errors.h"
-#include "posix/amio-posix-base-pump.h"
+#include "posix/amio-posix-base-poller.h"
 #include <unistd.h>
 #include <errno.h>
 

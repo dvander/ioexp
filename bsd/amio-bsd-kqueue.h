@@ -11,8 +11,8 @@
 #define _include_amio_bsd_kqueue_pump_h_
 
 #include "include/amio.h"
-#include "include/amio-posix-transport.h"
-#include "posix/amio-posix-base-pump.h"
+#include "include/amio-posix.h"
+#include "posix/amio-posix-base-poller.h"
 #include <sys/event.h>
 #include <sys/types.h>
 #include <am-utility.h>
@@ -22,15 +22,15 @@ namespace amio {
 
 using namespace ke;
 
-static const size_t kMaxEventsPerKqueuePoll = 256;
+static const size_t kDefaultMaxEventsPerPoll = 256;
 
-class KqueueMessagePump : public PosixPump
+class KqueueImpl : public PosixPoller
 {
  public:
-  KqueueMessagePump(size_t maxEvents = kMaxEventsPerKqueuePoll);
-  ~KqueueMessagePump();
+  KqueueImpl(size_t maxEvents = kDefaultMaxEventsPerPoll);
+  ~KqueueImpl();
 
-  Ref<IOError> Initialize() override;
+  Ref<IOError> Initialize();
   Ref<IOError> Poll(int timeoutMs) override;
   Ref<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) override;
   void Deregister(Ref<Transport> baseTransport) override;

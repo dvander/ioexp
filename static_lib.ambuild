@@ -37,9 +37,17 @@ binary.sources += [
   'posix/amio-posix-transport.cc',
   'posix/amio-posix-select.cc',
   'posix/amio-posix-poll.cc',
-  'linux/amio-linux.cc',
-  'linux/amio-linux-epoll.cc',
-#  'bsd/amio-bsd-kqueue.cc',
 ]
+if builder.target_platform == 'linux':
+  binary.sources += [
+    'linux/amio-linux.cc',
+    'linux/amio-linux-epoll.cc',
+  ]
+elif builder.target_platform == 'mac':
+  binary.sources += [
+    'bsd/amio-bsd.cc',
+    'bsd/amio-bsd-kqueue.cc',
+  ]
+
 builder.Add(binary)
 
