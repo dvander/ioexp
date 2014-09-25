@@ -95,7 +95,10 @@ enum AMIO_CLASS TransportFlags
 class MessagePump;
 
 // Underlying operating system types.
-#if !defined(WIN32)
+#if defined(WIN32)
+// Found in <amio/amio-windows-transport.h>
+class WinTransport;
+#else
 // Found in <amio/amio-posix-transport.h>
 class PosixTransport;
 #endif
@@ -140,7 +143,9 @@ class AMIO_CLASS Transport : public ke::Refcounted<Transport>
   virtual void Close() = 0;
 
   // Internal functions to cast transports to their underlying types.
-#if !defined(WIN32)
+#if defined(WIN32)
+  virtual WinTransport *toWinTransport() = 0;
+#else
   virtual PosixTransport *toPosixTransport() = 0;
 #endif
 };
@@ -245,6 +250,7 @@ class AMIO_CLASS MessagePump
 // Creates message pumps.
 class AMIO_CLASS MessagePumpFactory
 {
+ public:
   // Create a message pump using the best available polling technique. The pump
   // should be freed with |delete| or immediately stored in a ke::AutoPtr.
   static MessagePump *CreatePump();

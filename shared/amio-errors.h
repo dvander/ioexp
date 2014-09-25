@@ -10,7 +10,7 @@
 #ifndef _include_amio_shared_error_h_
 #define _include_amio_shared_error_h_
 
-#include "include/amio.h"
+#include "../include/amio.h"
 #include <stdarg.h>
 
 namespace amio {
