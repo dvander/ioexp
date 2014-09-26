@@ -33,7 +33,7 @@ SetNonBlocking(int fd)
   return nullptr;
 }
 
-Ref<IOError>
+PassRef<IOError>
 TransportFactory::CreateFromDescriptor(Ref<Transport> *outp, int fd, TransportFlags flags)
 {
   Ref<IOError> error = SetNonBlocking(fd);
@@ -43,7 +43,7 @@ TransportFactory::CreateFromDescriptor(Ref<Transport> *outp, int fd, TransportFl
   return nullptr;
 }
 
-Ref<IOError>
+PassRef<IOError>
 TransportFactory::CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp)
 {
   int fds[2];
@@ -64,7 +64,7 @@ TransportFactory::CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp)
   return nullptr;
 }
 
-Ref<IOError>
+PassRef<IOError>
 PollerFactory::CreateSelectImpl(Poller **outp)
 {
   *outp = new SelectImpl();
@@ -72,7 +72,7 @@ PollerFactory::CreateSelectImpl(Poller **outp)
 }
 
 #if defined(AMIO_POLL_AVAILABLE)
-Ref<IOError>
+PassRef<IOError>
 PollerFactory::CreatePollImpl(Poller **outp)
 {
   AutoPtr<PollImpl> poller(new PollImpl());

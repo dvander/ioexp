@@ -30,9 +30,9 @@ class KqueueImpl : public PosixPoller
   KqueueImpl(size_t maxEvents = kDefaultMaxEventsPerPoll);
   ~KqueueImpl();
 
-  Ref<IOError> Initialize();
-  Ref<IOError> Poll(int timeoutMs) override;
-  Ref<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) override;
+  PassRef<IOError> Initialize();
+  PassRef<IOError> Poll(int timeoutMs) override;
+  PassRef<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) override;
   void Deregister(Ref<Transport> baseTransport) override;
   void Interrupt() override;
 

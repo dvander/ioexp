@@ -34,7 +34,7 @@ KqueueImpl::~KqueueImpl()
   close(kq_);
 }
 
-Ref<IOError>
+PassRef<IOError>
 KqueueImpl::Initialize()
 {
   if ((kq_ = kqueue()) == -1)
@@ -47,7 +47,7 @@ KqueueImpl::Initialize()
   return nullptr;
 }
 
-Ref<IOError>
+PassRef<IOError>
 KqueueImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
@@ -97,7 +97,7 @@ KqueueImpl::Deregister(Ref<Transport> baseTransport)
   unhook(transport);
 }
 
-Ref<IOError>
+PassRef<IOError>
 KqueueImpl::Poll(int timeoutMs)
 {
   struct timespec timeout;

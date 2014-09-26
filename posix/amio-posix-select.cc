@@ -36,7 +36,7 @@ SelectImpl::~SelectImpl()
   }
 }
 
-Ref<IOError>
+PassRef<IOError>
 SelectImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
@@ -77,7 +77,7 @@ SelectImpl::Deregister(Ref<Transport> baseTransport)
   unhook(transport);
 }
 
-Ref<IOError>
+PassRef<IOError>
 SelectImpl::Poll(int timeoutMs)
 {
   // Bail out early if there's nothing to listen for.

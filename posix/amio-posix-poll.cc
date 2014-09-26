@@ -44,7 +44,7 @@ PollImpl::~PollImpl()
   }
 }
 
-Ref<IOError>
+PassRef<IOError>
 PollImpl::Initialize()
 {
   if (!listeners_.resize(kInitialPollSize))
@@ -52,7 +52,7 @@ PollImpl::Initialize()
   return nullptr;
 }
 
-Ref<IOError>
+PassRef<IOError>
 PollImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
@@ -109,7 +109,7 @@ PollImpl::Deregister(Ref<Transport> baseTransport)
   unhook(transport);
 }
 
-Ref<IOError>
+PassRef<IOError>
 PollImpl::Poll(int timeoutMs)
 {
   int nevents = poll(pollfds_.buffer(), pollfds_.length(), timeoutMs);
