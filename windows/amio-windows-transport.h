@@ -33,16 +33,6 @@ class WinTransport : public Transport
   // posted.
   virtual bool Write(IOResult *r, Ref<IOContext> context, const void *buffer, size_t length) override;
 
-  // Helper version of Read() that automatically allocates a new context.
-  //
-  // An optional data value may be communicated through the event.
-  IOResult Read(void *buffer, size_t length, uintptr_t data = 0);
-
-  // Helper version of Write() that automatically allocates a new context.
-  //
-  // An optional data value may be communicated through the event.
-  IOResult Write(const void *buffer, size_t length, uintptr_t data = 0);
-
   virtual void Close() override;
   WinTransport *toWinTransport() {
     return static_cast<WinTransport *>(this);
@@ -56,6 +46,9 @@ class WinTransport : public Transport
 
   PassRef<IOListener> listener() const {
     return listener_;
+  }
+  bool ImmediateDelivery() const {
+    return !!(flags_ & kTransportImmediateDelivery);
   }
 
  protected:

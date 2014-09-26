@@ -11,6 +11,8 @@
 #define _include_amio_types_h_
 
 #include <am-refcounting.h>
+#include <am-refcounting-threadsafe.h>
+#include <am-utility.h>
 
 namespace amio {
 
@@ -25,15 +27,25 @@ namespace amio {
 using namespace ke;
 
 // Types of errors that can occur.
+#if defined(KE_CXX11)
 enum class AMIO_CLASS ErrorType
 {
   System,       // System error (code included).
   Library,      // Library (AMIO) error.
   Exception     // Generic exception.
 };
+#else
+struct AMIO_CLASS ErrorType
+{
+  int type;
+  static const ErrorType System;
+  static const ErrorType Library;
+  static const ErrorType Exception;
+};
+#endif
 
 // Represents an I/O error.
-class AMIO_CLASS IOError : public ke::Refcounted<IOError>
+class AMIO_CLASS IOError : public ke::RefcountedThreadsafe<IOError>
 {
  public:
   virtual ~IOError()

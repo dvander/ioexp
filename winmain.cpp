@@ -12,17 +12,16 @@ using namespace amio;
 
 int main()
 {
-  Ref<IOError> error;
-//  AutoPtr<Poller> poller;
-//  Ref<IOError> error = PollerFactory::CreatePoller(poller.address());
-//  if (error) {
-//    fprintf(stderr, "epoll: %s\n", error->Message());
-//    return 1;
-//  }
+  Ref<Poller> poller;
+  Ref<IOError> error = PollerFactory::CreatePoller(&poller);
+  if (*error) {
+    fprintf(stderr, "epoll: %s\n", error->Message());
+    return 1;
+  }
 
   Ref<Transport> transport;
   error = TransportFactory::CreateFromHandle(&transport, GetStdHandle(STD_INPUT_HANDLE), kTransportNoAutoClose);
-  if (error) {
+  if (*error) {
     fprintf(stderr, "transport: %s\n", error->Message());
     return 1;
   }

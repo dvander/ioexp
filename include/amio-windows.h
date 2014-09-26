@@ -26,7 +26,7 @@ class IOListener;
 // IO operations must be associated with a context object. A context can be
 // associated with at most one operation at a time. Internally, this wraps
 // an OVERLAPPED structure from WINAPI.
-class IOContext : public ke::Refcounted<IOContext>
+class IOContext : public ke::RefcountedThreadsafe<IOContext>
 {
  public:
   virtual ~IOContext()
@@ -130,7 +130,9 @@ struct AMIO_CLASS IOResult
 // operations will be resolved in the order they are posted, however, the
 // notification of completed events is not guaranteed to happen in-order.
 // It is the application's responsibility to resolve this.
-class AMIO_CLASS Transport : public ke::Refcounted<Transport>
+//
+// Functions are not thread-safe unless otherwise noted.
+class AMIO_CLASS Transport : public ke::RefcountedThreadsafe<Transport>
 {
  public:
   virtual ~Transport()
@@ -184,7 +186,8 @@ class AMIO_CLASS Transport : public ke::Refcounted<Transport>
   // An optional data value may be communicated through the event.
   IOResult Write(const void *buffer, size_t length, uintptr_t data = 0);
 
-  // Close the transport, disconnecting it from any pollers.
+  // Close the transport, disconnecting it from any pollers. Any pending IO
+  // operations are cancelled.
   virtual void Close() = 0;
 
   // Returns true if the handle has been closed.
@@ -199,18 +202,18 @@ class AMIO_CLASS Transport : public ke::Refcounted<Transport>
 };
 
 // Status listeners for transports.
-class AMIO_CLASS IOListener : public ke::Refcounted<IOListener>
+class AMIO_CLASS IOListener : public ke::RefcountedThreadsafe<IOListener>
 {
  public:
   virtual ~IOListener()
   {}
 
   // Receives any read events posted from a Read() operation on a transport.
-  virtual void OnRead(ke::Ref<Transport> transport, IOResult &io)
+  virtual PassRef<IOError> OnRead(ke::Ref<Transport> transport, IOResult &io)
   {}
 
   // Receives any write events posted from a Write() operation on a transport.
-  virtual void OnWrite(ke::Ref<Transport> transport, IOResult &io)
+  virtual PassRef<IOError> OnWrite(ke::Ref<Transport> transport, IOResult &io)
   {}
 };
 
@@ -218,7 +221,11 @@ enum TransportFlags
 {
   // Override the default behavior of transports and do not automatically
   // close their underlying operating system resources.
-  kTransportNoAutoClose  = 0x00000001,
+  kTransportNoAutoClose       = 0x00000001,
+  
+  // Use immediate delivery. This cannot be specified when instantiating
+  // transports from existing handles.
+  kTransportImmediateDelivery = 0x00000002,
 
   kTransportDefaultFlags = 0x00000000
 };
@@ -229,11 +236,65 @@ class AMIO_CLASS TransportFactory
  public:
   //Create a transport around an existing IO handle. The Handle must be
   // compatible with WriteFile/ReadFile and IO Completion Ports.
-  static Ref<IOError> CreateFromHandle(
+  static PassRef<IOError> CreateFromHandle(
     Ref<Transport> *outp,
     HANDLE handle,
     TransportFlags flags = kTransportDefaultFlags
   );
+};
+
+// Polling objects. Transports cannot be removed from polling objects once
+// attached, so the poller's operating system resources will not be freed
+// until all transports are closed.
+//
+// Functions are not thread-safe unless otherwise noted.
+class AMIO_CLASS Poller : public ke::RefcountedThreadsafe<Poller>
+{
+ public:
+  virtual ~Poller()
+  {}
+
+  // Poll for new events. If timeoutMs is 0, then polling will not block. If
+  // timeoutMs is greater than 0, it may block for at most that many
+  // milliseconds. If timeoutMs is kNoTimeout, it may block indefinitely.
+  virtual Ref<IOError> Poll(int timeoutMs) = 0;
+
+  // Register a transport to an IO listener. The transport is permanently
+  // attached to the poller; it is automatically removed when the transport
+  // is closed.
+  virtual Ref<IOError> Attach(Ref<Transport> transport, Ref<IOListener> listener) = 0;
+
+  // Force all pending transports to close and cancel all pending I/O. This
+  // does not necessarily guarantee that the poller no longer has any
+  // references (for example, one may have been created from a duplicated
+  // handle).
+  virtual void ForceShutdown() = 0;
+
+  // Attempt to force the poller into immediate delivery mode. If immediate
+  // delivery mode is enabled, Read() and Write() calls may return immediately
+  // (if able) without posting an event to the poller. Immediate delivery is
+  // only available on Windows Vista or higher, or Windows Server 2008 or
+  // higher.
+  //
+  // It is recommended to use this mode when possible as it means less events
+  // being delivered. However, code must be careful to account for when it is
+  // not available (see the comment above IOResult). Code must also be careful
+  // not to starve a non-polling thread by continually reading data.
+  //
+  // Returns true on success, false if immediate delivery mode is not
+  // available.
+  virtual bool EnableImmediateDelivery() = 0;
+};
+
+class AMIO_CLASS PollerFactory
+{
+ public:
+  // Create a poller. By default the backing implementation uses IOCP
+  // (I/O Completion Ports) for a single thread.
+  static PassRef<IOError> CreatePoller(Ref<Poller> *poller);
+
+  // Create an I/O Completion Port poller.
+  static PassRef<IOError> CreateCompletionPort(Ref<Poller> *poller, size_t nConcurrentThreads);
 };
 
 } // namespace amio
