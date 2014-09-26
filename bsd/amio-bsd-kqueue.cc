@@ -28,7 +28,7 @@ KqueueImpl::~KqueueImpl()
 
   for (size_t i = 0; i < listeners_.length(); i++) {
     if (listeners_[i].transport)
-      listeners_[i].transport->setPump(nullptr);
+      listeners_[i].transport->detach();
   }
 
   close(kq_);
@@ -79,10 +79,9 @@ KqueueImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 
   // Hook up the transport.
   listeners_[slot].transport = transport;
-  listeners_[slot].listener = listener;
   listeners_[slot].modified = generation_;
   listeners_[slot].watching_writes = false;
-  transport->setPump(this);
+  transport->attach(this, listener);
   transport->setUserData(slot);
   return nullptr;
 }
@@ -120,19 +119,22 @@ KqueueImpl::Poll(int timeoutMs)
       continue;
 
     if (ev.flags & EV_EOF) {
-      PollData data = listeners_[slot];
-      unhook(data.transport);
-      data.listener->OnHangup(data.transport);
+      // Get a local copy of the poll data before we wipe it out.
+      Ref<PosixTransport> transport = listeners_[slot].transport;
+      Ref<StatusListener> listener = transport->listener();
+      unhook(transport);
+      listener->OnHangup(transport);
       continue;
     }
 
+    PollData &data = listeners_[slot];
     switch (ev.filter) {
      case EVFILT_READ:
-      listeners_[slot].listener->OnReadReady(listeners_[slot].transport);
+      data.transport->listener()->OnReadReady(data.transport);
       break;
 
      case EVFILT_WRITE:
-      listeners_[slot].listener->OnWriteReady(listeners_[slot].transport);
+      data.transport->listener()->OnWriteReady(data.transport);
       break;
 
      default:
@@ -192,8 +194,7 @@ KqueueImpl::unhook(Ref<PosixTransport> transport)
   kevent(kq_, events, nevents, nullptr, 0, nullptr);
 
   listeners_[slot].transport = nullptr;
-  listeners_[slot].listener = nullptr;
   listeners_[slot].modified = generation_;
-  transport->setPump(nullptr);
+  transport->detach();
   free_slots_.append(slot);
 }

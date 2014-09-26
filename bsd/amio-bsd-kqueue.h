@@ -49,7 +49,6 @@ class KqueueImpl : public PosixPoller
  private:
   struct PollData {
     Ref<PosixTransport> transport;
-    Ref<StatusListener> listener;
     size_t modified;
     bool watching_writes;
   };

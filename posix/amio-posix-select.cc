@@ -18,21 +18,21 @@ using namespace ke;
 
 SelectImpl::SelectImpl()
  : fd_watermark_(-1),
-   max_listeners_(FD_SETSIZE),
+   max_fds_(FD_SETSIZE),
    generation_(0)
 {
   FD_ZERO(&read_fds_);
   FD_ZERO(&write_fds_);
-  max_listeners_ = FD_SETSIZE;
-  listeners_ = new SelectData[max_listeners_];
-  memset(listeners_, 0, sizeof(SelectData) * max_listeners_);
+  max_fds_ = FD_SETSIZE;
+  fds_ = new SelectData[max_fds_];
+  memset(fds_, 0, sizeof(SelectData) * max_fds_);
 }
 
 SelectImpl::~SelectImpl()
 {
-  for (size_t i = 0; i < max_listeners_; i++) {
-    if (listeners_[i].transport)
-      listeners_[i].transport->setPump(nullptr);
+  for (size_t i = 0; i < max_fds_; i++) {
+    if (fds_[i].transport)
+      fds_[i].transport->detach();
   }
 }
 
@@ -50,12 +50,11 @@ SelectImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
     return eTransportClosed;
 
   assert(listener);
-  assert(size_t(transport->fd()) < max_listeners_);
+  assert(size_t(transport->fd()) < max_fds_);
 
-  transport->setPump(this);
-  listeners_[transport->fd()].transport = transport;
-  listeners_[transport->fd()].listener = listener;
-  listeners_[transport->fd()].modified = generation_;
+  transport->attach(this, listener);
+  fds_[transport->fd()].transport = transport;
+  fds_[transport->fd()].modified = generation_;
 
   if (transport->fd() > fd_watermark_)
     fd_watermark_ = transport->fd();
@@ -100,7 +99,7 @@ SelectImpl::Poll(int timeoutMs)
     return new PosixError();
 
   generation_++;
-  for (size_t i = 0; i < max_listeners_; i++) {
+  for (size_t i = 0; i < max_fds_; i++) {
     // Make sure this transport wasn't swapped out or removed.
     if (!isEventValid(i))
       continue;
@@ -109,7 +108,7 @@ SelectImpl::Poll(int timeoutMs)
       // We pre-emptively remove this descriptor to simulate edge-triggering.
       FD_CLR(i, &read_fds_);
 
-      listeners_[i].listener->OnReadReady(listeners_[i].transport);
+      fds_[i].transport->listener()->OnReadReady(fds_[i].transport);
       if (!isEventValid(i))
         continue;
     }
@@ -117,7 +116,7 @@ SelectImpl::Poll(int timeoutMs)
       // We pre-emptively remove this descriptor to simulate edge-triggering.
       FD_CLR(i, &write_fds_);
 
-      listeners_[i].listener->OnWriteReady(listeners_[i].transport);
+      fds_[i].transport->listener()->OnWriteReady(fds_[i].transport);
     }
   }
 
@@ -128,7 +127,7 @@ void
 SelectImpl::onReadWouldBlock(PosixTransport *transport)
 {
   int fd = transport->fd();
-  assert(listeners_[fd].transport);
+  assert(fds_[fd].transport);
   FD_SET(fd, &read_fds_);
 }
 
@@ -136,7 +135,7 @@ PassRef<IOError>
 SelectImpl::onWriteWouldBlock(PosixTransport *transport)
 {
   int fd = transport->fd();
-  assert(listeners_[fd].transport);
+  assert(fds_[fd].transport);
   FD_SET(fd, &write_fds_);
   return nullptr;
 }
@@ -146,26 +145,25 @@ SelectImpl::unhook(Ref<PosixTransport> transport)
 {
   int fd = transport->fd();
   assert(fd != -1);
-  assert(listeners_[fd].transport == transport);
+  assert(fds_[fd].transport == transport);
 
   FD_CLR(fd, &read_fds_);
   FD_CLR(fd, &write_fds_);
-  listeners_[fd].transport = nullptr;
-  listeners_[fd].listener = nullptr;
-  listeners_[fd].modified = generation_;
+  fds_[fd].transport = nullptr;
+  fds_[fd].modified = generation_;
 
   // If this was the watermark, find a new one.
   if (fd == fd_watermark_) {
     fd_watermark_ = -1;
     for (int i = fd - 1; i >= 0; i--) {
-      if (listeners_[i].transport) {
+      if (fds_[i].transport) {
         fd_watermark_ = i;
         break;
       }
     }
   }
 
-  transport->setPump(nullptr);
+  transport->detach();
 }
 
 void

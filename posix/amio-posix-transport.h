@@ -50,13 +50,21 @@ class PosixTransport : public Transport
   }
 
   // Pump callbacks.
-  void setPump(PosixPoller *pump) {
+  void attach(PosixPoller *pump, PassRef<StatusListener> listener) {
     // Do not overwrite an existing pump with a non-null pump.
-    assert(!pump_ || !pump);
+    assert(!pump_);
     pump_ = pump;
+    listener_ = listener;
+  }
+  void detach() {
+    pump_ = nullptr;
+    listener_ = nullptr;
   }
   PosixPoller *pump() const {
     return pump_;
+  }
+  PassRef<StatusListener> listener() {
+    return listener_;
   }
 
   // These are used by message pumps; they should not be called from outside.
@@ -72,6 +80,11 @@ class PosixTransport : public Transport
   uintptr_t userdata_;
   TransportFlags flags_;
   PosixPoller *pump_;
+
+  // This will not cause a cycle with status listeners that hold a reference to
+  // the transport, since the act of closing the transport (which is recommended)
+  // will clear the pump, which also clears the listener.
+  Ref<StatusListener> listener_;
 };
 
 } // namespace amio

@@ -44,14 +44,13 @@ class PollImpl : public PosixPoller
 
  private:
   bool isEventValid(size_t slot) const {
-    return slot < listeners_.length() &&
-           listeners_[slot].modified != generation_;
+    return slot < fds_.length() &&
+           fds_[slot].modified != generation_;
   }
 
  private:
   struct PollData {
     Ref<PosixTransport> transport;
-    Ref<StatusListener> listener;
     size_t slot;
     uintptr_t modified;
 
@@ -63,8 +62,8 @@ class PollImpl : public PosixPoller
   bool can_use_rdhup_;
 #endif
   uintptr_t generation_;
-  ke::Vector<struct pollfd> pollfds_;
-  ke::Vector<PollData> listeners_;
+  ke::Vector<struct pollfd> poll_events_;
+  ke::Vector<PollData> fds_;
   ke::Vector<size_t> free_slots_;
 };
 
