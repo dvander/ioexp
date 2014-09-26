@@ -32,9 +32,9 @@ class EpollImpl : public PosixPoller
   EpollImpl(size_t maxEvents = kDefaultMaxEventsPerPoll);
   ~EpollImpl();
 
-  Ref<IOError> Initialize();
-  Ref<IOError> Poll(int timeoutMs) override;
-  Ref<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) override;
+  PassRef<IOError> Initialize();
+  PassRef<IOError> Poll(int timeoutMs) override;
+  PassRef<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) override;
   void Deregister(Ref<Transport> baseTransport) override;
   void Interrupt() override;
 
@@ -51,7 +51,6 @@ class EpollImpl : public PosixPoller
  private:
   struct PollData {
     Ref<PosixTransport> transport;
-    Ref<StatusListener> listener;
     size_t modified;
     bool watching_writes;
   };

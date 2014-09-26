@@ -35,7 +35,7 @@ EpollImpl::EpollImpl(size_t maxEvents)
 #endif
 }
 
-Ref<IOError>
+PassRef<IOError>
 EpollImpl::Initialize()
 {
   if ((ep_ = epoll_create(kInitialEpollSize)) == -1)
@@ -55,13 +55,13 @@ EpollImpl::~EpollImpl()
 
   for (size_t i = 0; i < listeners_.length(); i++) {
     if (listeners_[i].transport)
-      listeners_[i].transport->setPump(nullptr);
+      listeners_[i].transport->detach();
   }
 
   close(ep_);
 }
 
-Ref<IOError>
+PassRef<IOError>
 EpollImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
@@ -100,10 +100,9 @@ EpollImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 
   // Hook up the transport.
   listeners_[slot].transport = transport;
-  listeners_[slot].listener = listener;
   listeners_[slot].modified = generation_;
   listeners_[slot].watching_writes = false;
-  transport->setPump(this);
+  transport->attach(this, listener);
   transport->setUserData(slot);
   return nullptr;
 }
@@ -118,7 +117,7 @@ EpollImpl::Deregister(Ref<Transport> baseTransport)
   unhook(transport);
 }
 
-Ref<IOError>
+PassRef<IOError>
 EpollImpl::Poll(int timeoutMs)
 {
   int nevents = epoll_wait(ep_, event_buffer_, max_events_, timeoutMs);
@@ -134,24 +133,26 @@ EpollImpl::Poll(int timeoutMs)
 
     // Handle errors first.
     if (ep.events & EPOLLERR) {
-      PollData data = listeners_[slot];
-      unhook(data.transport);
-      data.listener->OnError(data.transport, eUnknownHangup);
+      Ref<PosixTransport> transport = listeners_[slot].transport;
+      Ref<StatusListener> listener = transport->listener();
+      unhook(transport);
+      listener->OnError(transport, eUnknownHangup);
       continue;
     }
 
     // Prioritize EPOLLIN over EPOLLHUP/EPOLLRDHUP.
     if (ep.events & EPOLLIN) {
-      listeners_[slot].listener->OnReadReady(listeners_[slot].transport);
+      listeners_[slot].transport->listener()->OnReadReady(listeners_[slot].transport);
       if (!isEventValid(slot))
         continue;
     }
 
     // Handle explicit hangup.
     if (ep.events & (EPOLLRDHUP|EPOLLHUP)) {
-      PollData data = listeners_[slot];
-      unhook(data.transport);
-      data.listener->OnHangup(data.transport);
+      Ref<PosixTransport> transport = listeners_[slot].transport;
+      Ref<StatusListener> listener = transport->listener();
+      unhook(transport);
+      listener->OnHangup(transport);
       continue;
     }
 
@@ -159,7 +160,7 @@ EpollImpl::Poll(int timeoutMs)
     if (ep.events & EPOLLOUT) {
       // No need to check if the event is still valid since this is the last
       // check.
-      listeners_[slot].listener->OnWriteReady(listeners_[slot].transport);
+      listeners_[slot].transport->listener()->OnWriteReady(listeners_[slot].transport);
     }
   }
 
@@ -213,8 +214,7 @@ EpollImpl::unhook(Ref<PosixTransport> transport)
   epoll_ctl(ep_, EPOLL_CTL_DEL, fd, &pe);
 
   listeners_[slot].transport = nullptr;
-  listeners_[slot].listener = nullptr;
   listeners_[slot].modified = generation_;
-  transport->setPump(nullptr);
+  transport->detach();
   free_slots_.append(slot);
 }

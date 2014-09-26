@@ -43,7 +43,7 @@ amio::GetLinuxVersion(int *major, int *minor, int *release)
   return true;
 }
 
-Ref<IOError>
+PassRef<IOError>
 PollerFactory::CreateEpollImpl(Poller **outp, size_t maxEventsPerPoll)
 {
   AutoPtr<EpollImpl> poller(new EpollImpl(maxEventsPerPoll));
@@ -54,7 +54,7 @@ PollerFactory::CreateEpollImpl(Poller **outp, size_t maxEventsPerPoll)
   return nullptr;
 }
 
-Ref<IOError>
+PassRef<IOError>
 PollerFactory::CreatePoller(Poller **outp)
 {
   if (IsAtLeastLinux(2, 5, 44))
