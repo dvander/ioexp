@@ -19,7 +19,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v110</PlatformToolset>
+    <PlatformToolset>v100</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
@@ -52,7 +52,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions);_CRT_SECURE_NO_DEPRECATE</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(SolutionDir)\shared;$(SolutionDir)\include;C:\users\dvander\alliedmodders\amtl\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)\shared;$(SolutionDir)\include;$(SolutionDir)\..\amtl\include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -82,9 +82,12 @@
     <ClInclude Include="include\amio.h" />
     <ClInclude Include="shared\amio-errors.h" />
     <ClInclude Include="shared\amio-string.h" />
+    <ClInclude Include="windows\amio-windows-base-poller.h" />
     <ClInclude Include="windows\amio-windows-errors.h" />
     <ClInclude Include="windows\amio-windows-context.h" />
+    <ClInclude Include="windows\amio-windows-iocp.h" />
     <ClInclude Include="windows\amio-windows-transport.h" />
+    <ClInclude Include="windows\amio-windows-util.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="shared\amio-errors.cc" />

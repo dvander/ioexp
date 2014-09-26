@@ -48,6 +48,15 @@
     <ClInclude Include="windows\amio-windows-errors.h">
       <Filter>Header Files\windows</Filter>
     </ClInclude>
+    <ClInclude Include="windows\amio-windows-iocp.h">
+      <Filter>Header Files\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="windows\amio-windows-base-poller.h">
+      <Filter>Header Files\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="windows\amio-windows-util.h">
+      <Filter>Header Files\windows</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="shared\amio-errors.cc">

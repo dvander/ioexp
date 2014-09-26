@@ -73,7 +73,7 @@ PollerFactory::CreateCompletionPort(Ref<Poller> *poller, size_t numConcurrentThr
 {
   Ref<CompletionPort> port = new CompletionPort();
   Ref<IOError> error = port->Initialize(numConcurrentThreads);
-  if (*error)
+  if (error)
     return error;
   *poller = port;
   return nullptr;
