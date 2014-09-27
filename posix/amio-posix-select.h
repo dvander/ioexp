@@ -28,8 +28,8 @@ class SelectImpl : public PosixPoller
   SelectImpl();
   ~SelectImpl();
 
-  Ref<IOError> Poll(int timeoutMs) override;
-  Ref<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) override;
+  PassRef<IOError> Poll(int timeoutMs) override;
+  PassRef<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) override;
   void Deregister(Ref<Transport> baseTransport) override;
   void Interrupt() override;
 
@@ -39,13 +39,12 @@ class SelectImpl : public PosixPoller
 
  private:
   bool isEventValid(size_t slot) const {
-    return listeners_[slot].modified != generation_;
+    return fds_[slot].modified != generation_;
   }
 
  private:
   struct SelectData {
     Ref<PosixTransport> transport;
-    Ref<StatusListener> listener;
     uintptr_t modified;
 
     SelectData() : modified(0)
@@ -55,9 +54,9 @@ class SelectImpl : public PosixPoller
   int fd_watermark_;
   fd_set read_fds_;
   fd_set write_fds_;
-  size_t max_listeners_;
+  size_t max_fds_;
   uintptr_t generation_;
-  AutoArray<SelectData> listeners_;
+  AutoArray<SelectData> fds_;
 };
 
 } // namespace amio

@@ -32,7 +32,7 @@ void
 PosixTransport::Close()
 {
   if (fd_ == -1) {
-    assert(!pump_);
+    assert(!pump_ && !listener_);
     return;
   }
 
@@ -41,7 +41,8 @@ PosixTransport::Close()
 
   close(fd_);
   fd_ = -1;
-  pump_ = nullptr;
+
+  assert(!pump_ && !listener_);
 }
 
 bool

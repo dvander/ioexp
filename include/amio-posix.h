@@ -131,7 +131,7 @@ class AMIO_CLASS Poller
    // failures are propagated through status listeners.
    //
    // Poll() is not re-entrant.
-   virtual Ref<IOError> Poll(int timeoutMs = kNoTimeout) = 0;
+   virtual PassRef<IOError> Poll(int timeoutMs = kNoTimeout) = 0;
 
    // Interrupt a poll operation. The active poll operation will return an error.
    virtual void Interrupt() = 0;
@@ -139,7 +139,7 @@ class AMIO_CLASS Poller
    // Registers a transport with the pump. A transport can be registered to at
    // most one pump at any given time. Only transports created via
    // TransportFactory can be registered.
-   virtual Ref<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) = 0;
+   virtual PassRef<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) = 0;
 
    // Deregisters a transport from a pump. This happens automatically if the
    // transport is closed, a status error or hangup is generated, or a Read()
@@ -158,26 +158,26 @@ class AMIO_CLASS PollerFactory
  public:
   // Create a message pump using the best available polling technique. The pump
   // should be freed with |delete| or immediately stored in a ke::AutoPtr.
-  static Ref<IOError> CreatePoller(Poller **outp);
+  static PassRef<IOError> CreatePoller(Poller **outp);
 
   // Create a message pump based on select(). Although Windows supports select(),
   // AMIO uses IO Completion Ports which supports much more of the Windows API.
   // For now, select() pumps are not available on Windows.
-  static Ref<IOError> CreateSelectImpl(Poller **outp);
+  static PassRef<IOError> CreateSelectImpl(Poller **outp);
 
 #if defined(AMIO_POLL_AVAILABLE)
   // Create a message pump based on POSIX poll().
-  static Ref<IOError> CreatePollImpl(Poller **outp);
+  static PassRef<IOError> CreatePollImpl(Poller **outp);
 #endif
 
 #if defined(__linux__)
   // Create a message pump based on epoll(). By default maxEventsPerPoll is 
   // 256, when used through CreatePoller(). Use 0 for the default.
-  static Ref<IOError> CreateEpollImpl(Poller **outp, size_t maxEventsPerPoll = 0);
+  static PassRef<IOError> CreateEpollImpl(Poller **outp, size_t maxEventsPerPoll = 0);
 #elif defined(__APPLE__) || defined(BSD) || defined(__MACH__)
   // Create a message pump based on kqueue(). By default maxEventsPerPoll is
   // 256, when used through CreatePoller(). Use 0 for the default.
-  static Ref<IOError> CreateKqueueImpl(Poller **outp, size_t maxEventsPerPoll = 0);
+  static PassRef<IOError> CreateKqueueImpl(Poller **outp, size_t maxEventsPerPoll = 0);
 #endif
 };
 
@@ -197,10 +197,10 @@ class AMIO_CLASS TransportFactory
 {
  public:
   // Create a transport from a pre-existing file descriptor.
-  static Ref<IOError> CreateFromDescriptor(Ref<Transport> *outp, int fd, TransportFlags flags = kTransportDefaultFlags);
+  static PassRef<IOError> CreateFromDescriptor(Ref<Transport> *outp, int fd, TransportFlags flags = kTransportDefaultFlags);
 
   // Create a transport for a unix pipe (via the pipe() call).
-  static Ref<IOError> CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp);
+  static PassRef<IOError> CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp);
 };
 
 } // namespace amio

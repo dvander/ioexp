@@ -34,25 +34,25 @@ PollImpl::PollImpl()
 
 PollImpl::~PollImpl()
 {
-  for (size_t i = 0; i < pollfds_.length(); i++) {
-    int fd = pollfds_[i].fd;
+  for (size_t i = 0; i < poll_events_.length(); i++) {
+    int fd = poll_events_[i].fd;
     if (fd == -1)
       continue;
 
-    if (listeners_[fd].transport)
-      listeners_[fd].transport->setPump(nullptr);
+    if (fds_[fd].transport)
+      fds_[fd].transport->detach();
   }
 }
 
-Ref<IOError>
+PassRef<IOError>
 PollImpl::Initialize()
 {
-  if (!listeners_.resize(kInitialPollSize))
+  if (!fds_.resize(kInitialPollSize))
     return eOutOfMemory;
   return nullptr;
 }
 
-Ref<IOError>
+PassRef<IOError>
 PollImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
@@ -63,13 +63,13 @@ PollImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
   if (transport->fd() == -1)
     return eTransportClosed;
 
-  if (size_t(transport->fd()) >= listeners_.length()) {
-    if (!listeners_.resize(transport->fd() + 1))
+  if (size_t(transport->fd()) >= fds_.length()) {
+    if (!fds_.resize(transport->fd() + 1))
       return eOutOfMemory;
   }
 
   assert(listener);
-  assert(size_t(transport->fd()) < listeners_.length());
+  assert(size_t(transport->fd()) < fds_.length());
 
   // By default we wait for reads (see the comment in the select pump).
   int defaultEvents = POLLIN | POLLERR | POLLHUP;
@@ -83,19 +83,18 @@ PollImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
   pe.fd = transport->fd();
   pe.events = defaultEvents;
   if (free_slots_.empty()) {
-    slot = pollfds_.length();
-    if (!pollfds_.append(pe))
+    slot = poll_events_.length();
+    if (!poll_events_.append(pe))
       return eOutOfMemory;
   } else {
     slot = free_slots_.popCopy();
-    pollfds_[slot] = pe;
+    poll_events_[slot] = pe;
   }
 
-  transport->setPump(this);
-  listeners_[transport->fd()].transport = transport;
-  listeners_[transport->fd()].listener = listener;
-  listeners_[transport->fd()].slot = slot;
-  listeners_[transport->fd()].modified = generation_;
+  transport->attach(this, listener);
+  fds_[transport->fd()].transport = transport;
+  fds_[transport->fd()].slot = slot;
+  fds_[transport->fd()].modified = generation_;
   return nullptr;
 }
 
@@ -109,22 +108,22 @@ PollImpl::Deregister(Ref<Transport> baseTransport)
   unhook(transport);
 }
 
-Ref<IOError>
+PassRef<IOError>
 PollImpl::Poll(int timeoutMs)
 {
-  int nevents = poll(pollfds_.buffer(), pollfds_.length(), timeoutMs);
+  int nevents = poll(poll_events_.buffer(), poll_events_.length(), timeoutMs);
   if (nevents == -1)
     return new PosixError();
   if (nevents == 0)
     return nullptr;
 
   generation_++;
-  for (size_t i = 0; i < pollfds_.length() && nevents > 0; i++) {
-    int revents = pollfds_[i].revents;
+  for (size_t i = 0; i < poll_events_.length() && nevents > 0; i++) {
+    int revents = poll_events_[i].revents;
     if (revents == 0)
       continue;
 
-    int fd = pollfds_[i].fd;
+    int fd = poll_events_[i].fd;
     nevents--;
 
     // We have to check this in case the list changes during iteration.
@@ -134,18 +133,19 @@ PollImpl::Poll(int timeoutMs)
     // Handle errors first.
     if (revents & POLLERR) {
       // Get a local copy of the poll data before we wipe it out.
-      PollData data = listeners_[fd];
-      unhook(data.transport);
-      data.listener->OnError(data.transport, eUnknownHangup);
+      Ref<PosixTransport> transport = fds_[fd].transport;
+      Ref<StatusListener> listener = transport->listener();
+      unhook(transport);
+      listener->OnError(transport, eUnknownHangup);
       continue;
     }
 
     // Prioritize POLLIN over POLLHUP/POLLRDHUP.
     if (revents & POLLIN) {
       // Remove the flag to simulate edge-triggering.
-      pollfds_[fd].events &= ~POLLIN;
+      poll_events_[fd].events &= ~POLLIN;
 
-      listeners_[fd].listener->OnReadReady(listeners_[fd].transport);
+      fds_[fd].transport->listener()->OnReadReady(fds_[fd].transport);
       if (!isEventValid(fd))
         continue;
     }
@@ -158,20 +158,21 @@ PollImpl::Poll(int timeoutMs)
 #endif
     {
       // Get a local copy of the poll data before we wipe it out.
-      PollData data = listeners_[fd];
-      unhook(data.transport);
-      data.listener->OnHangup(data.transport);
+      Ref<PosixTransport> transport = fds_[fd].transport;
+      Ref<StatusListener> listener = transport->listener();
+      unhook(transport);
+      listener->OnHangup(transport);
       continue;
     }
 
     // Handle output.
     if (revents & POLLOUT) {
       // Remove the flag to simulate edge-triggering.
-      pollfds_[fd].events &= ~POLLOUT;
+      poll_events_[fd].events &= ~POLLOUT;
 
       // This is the last event we handle, so we don't need any re-entrancy
       // checks.
-      listeners_[fd].listener->OnWriteReady(listeners_[fd].transport);
+      fds_[fd].transport->listener()->OnWriteReady(fds_[fd].transport);
     }
   }
 
@@ -189,20 +190,20 @@ void
 PollImpl::onReadWouldBlock(PosixTransport *transport)
 {
   int fd = transport->fd();
-  size_t slot = listeners_[fd].slot;
-  assert(pollfds_[slot].fd == fd);
+  size_t slot = fds_[fd].slot;
+  assert(poll_events_[slot].fd == fd);
 
-  pollfds_[slot].events |= POLLIN;
+  poll_events_[slot].events |= POLLIN;
 }
 
 PassRef<IOError>
 PollImpl::onWriteWouldBlock(PosixTransport *transport)
 {
   int fd = transport->fd();
-  size_t slot = listeners_[fd].slot;
-  assert(pollfds_[slot].fd == fd);
+  size_t slot = fds_[fd].slot;
+  assert(poll_events_[slot].fd == fd);
 
-  pollfds_[slot].events |= POLLOUT;
+  poll_events_[slot].events |= POLLOUT;
   return nullptr;
 }
 
@@ -211,16 +212,15 @@ PollImpl::unhook(Ref<PosixTransport> transport)
 {
   int fd = transport->fd();
   assert(fd != -1);
-  assert(listeners_[fd].transport == transport);
+  assert(fds_[fd].transport == transport);
 
-  size_t slot = listeners_[fd].slot;
-  assert(pollfds_[slot].fd == fd);
+  size_t slot = fds_[fd].slot;
+  assert(poll_events_[slot].fd == fd);
 
-  pollfds_[slot].fd = -1;
-  listeners_[fd].transport = nullptr;
-  listeners_[fd].listener = nullptr;
-  listeners_[fd].modified = generation_;
+  poll_events_[slot].fd = -1;
+  fds_[fd].transport = nullptr;
+  fds_[fd].modified = generation_;
   free_slots_.append(slot);
 
-  transport->setPump(nullptr);
+  transport->detach();
 }
