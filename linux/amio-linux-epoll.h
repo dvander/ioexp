@@ -40,7 +40,7 @@ class EpollImpl : public PosixPoller
 
   void onReadWouldBlock(PosixTransport *transport) override;
   PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
-  void unhook(ke::Ref<PosixTransport> transport) override;
+  void unhook(PosixTransport *transport) override;
 
  private:
   bool isEventValid(size_t slot) const {

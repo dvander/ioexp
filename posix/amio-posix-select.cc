@@ -141,12 +141,14 @@ SelectImpl::onWriteWouldBlock(PosixTransport *transport)
 }
 
 void
-SelectImpl::unhook(Ref<PosixTransport> transport)
+SelectImpl::unhook(PosixTransport *transport)
 {
   int fd = transport->fd();
   assert(fd != -1);
   assert(fds_[fd].transport == transport);
+  assert(transport->pump() == this);
 
+  transport->detach();
   FD_CLR(fd, &read_fds_);
   FD_CLR(fd, &write_fds_);
   fds_[fd].transport = nullptr;
@@ -162,8 +164,6 @@ SelectImpl::unhook(Ref<PosixTransport> transport)
       }
     }
   }
-
-  transport->detach();
 }
 
 void

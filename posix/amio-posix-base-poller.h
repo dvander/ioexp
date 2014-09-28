@@ -26,6 +26,8 @@ class PosixPoller : public Poller
   virtual ke::PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) = 0;
 
   // Notifies the pump that a socket should be removed from the event list.
+  // Note that we don't use Ref<> here, since we potentially call this from
+  // the transport's destructor, we don't want to revive the object.
   virtual void unhook(PosixTransport *transport) = 0;
 };
 

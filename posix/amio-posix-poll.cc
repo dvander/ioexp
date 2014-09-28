@@ -208,19 +208,20 @@ PollImpl::onWriteWouldBlock(PosixTransport *transport)
 }
 
 void
-PollImpl::unhook(Ref<PosixTransport> transport)
+PollImpl::unhook(PosixTransport *transport)
 {
   int fd = transport->fd();
   assert(fd != -1);
   assert(fds_[fd].transport == transport);
+  assert(transport->pump() == this);
 
   size_t slot = fds_[fd].slot;
   assert(poll_events_[slot].fd == fd);
+
+  transport->detach();
 
   poll_events_[slot].fd = -1;
   fds_[fd].transport = nullptr;
   fds_[fd].modified = generation_;
   free_slots_.append(slot);
-
-  transport->detach();
 }

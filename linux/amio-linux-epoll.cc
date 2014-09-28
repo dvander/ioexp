@@ -199,7 +199,7 @@ EpollImpl::onWriteWouldBlock(PosixTransport *transport)
 }
 
 void
-EpollImpl::unhook(Ref<PosixTransport> transport)
+EpollImpl::unhook(PosixTransport *transport)
 {
   assert(transport->pump() == this);
 
@@ -213,8 +213,9 @@ EpollImpl::unhook(Ref<PosixTransport> transport)
   epoll_event pe;
   epoll_ctl(ep_, EPOLL_CTL_DEL, fd, &pe);
 
+  transport->detach();
+
   listeners_[slot].transport = nullptr;
   listeners_[slot].modified = generation_;
-  transport->detach();
   free_slots_.append(slot);
 }

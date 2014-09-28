@@ -12,25 +12,16 @@
 
 using namespace amio;
 
-ke::Ref<GenericError> amio::eTransportAlreadyRegistered;
-ke::Ref<GenericError> amio::eOutOfMemory;
-ke::Ref<GenericError> amio::eUnknownHangup;
+ke::Ref<GenericError> amio::eTransportAlreadyRegistered = new GenericError("transport already registered");
+ke::Ref<GenericError> amio::eOutOfMemory = new GenericError("out of memory");
+ke::Ref<GenericError> amio::eUnknownHangup = new GenericError("unknown hangup");
+ke::Ref<GenericError> amio::eTransportClosed = new GenericError("transport is closed");
 
 #if !defined(KE_CXX11)
 const ErrorType ErrorType::System = {0};
 const ErrorType ErrorType::Library = {1};
 const ErrorType ErrorType::Exception = {2};
 #endif
-
-class InitializeSharedErrors
-{
- public:
-  InitializeSharedErrors() {
-    eTransportAlreadyRegistered = new GenericError("transport already registered to a message pump");
-    eOutOfMemory = new GenericError("out of memory");
-    eUnknownHangup = new GenericError("unknown hangup");
-  }
-} sSharedErrorInitializer;
 
 GenericError::GenericError(const char *fmt, ...)
 {
