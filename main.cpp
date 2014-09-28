@@ -57,7 +57,7 @@ int main()
 
   Ref<InStatus> status = new InStatus();
 
-  error = poller->Register(transport, status);
+  error = poller->Attach(transport, status);
   if (error) {
     fprintf(stderr, "register: %s\n", error->Message());
     return 1;

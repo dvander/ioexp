@@ -53,13 +53,13 @@ PollImpl::Initialize()
 }
 
 PassRef<IOError>
-PollImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
+PollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport)
     return eIncompatibleTransport;
   if (transport->pump())
-    return eTransportAlreadyRegistered;
+    return eTransportAlreadyAttached;
   if (transport->fd() == -1)
     return eTransportClosed;
 
@@ -99,7 +99,7 @@ PollImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 }
 
 void
-PollImpl::Deregister(Ref<Transport> baseTransport)
+PollImpl::Detach(Ref<Transport> baseTransport)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport || transport->pump() != this || transport->fd() == -1)

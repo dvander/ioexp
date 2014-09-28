@@ -62,13 +62,13 @@ EpollImpl::~EpollImpl()
 }
 
 PassRef<IOError>
-EpollImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
+EpollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport)
     return eIncompatibleTransport;
   if (transport->pump())
-    return eTransportAlreadyRegistered;
+    return eTransportAlreadyAttached;
   if (transport->fd() == -1)
     return eTransportClosed;
 
@@ -108,7 +108,7 @@ EpollImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
 }
 
 void
-EpollImpl::Deregister(Ref<Transport> baseTransport)
+EpollImpl::Detach(Ref<Transport> baseTransport)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport || transport->pump() != this || transport->fd() == -1)

@@ -29,8 +29,8 @@ class SelectImpl : public PosixPoller
   ~SelectImpl();
 
   PassRef<IOError> Poll(int timeoutMs) override;
-  PassRef<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) override;
-  void Deregister(Ref<Transport> baseTransport) override;
+  PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener) override;
+  void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
 
   void onReadWouldBlock(PosixTransport *transport) override;

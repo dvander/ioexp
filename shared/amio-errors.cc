@@ -12,7 +12,7 @@
 
 using namespace amio;
 
-ke::Ref<GenericError> amio::eTransportAlreadyRegistered = new GenericError("transport already registered");
+ke::Ref<GenericError> amio::eTransportAlreadyAttached = new GenericError("transport already attached");
 ke::Ref<GenericError> amio::eOutOfMemory = new GenericError("out of memory");
 ke::Ref<GenericError> amio::eUnknownHangup = new GenericError("unknown hangup");
 ke::Ref<GenericError> amio::eTransportClosed = new GenericError("transport is closed");

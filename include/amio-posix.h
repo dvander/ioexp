@@ -136,16 +136,16 @@ class AMIO_CLASS Poller
    // Interrupt a poll operation. The active poll operation will return an error.
    virtual void Interrupt() = 0;
 
-   // Registers a transport with the pump. A transport can be registered to at
+   // Attachs a transport with the pump. A transport can be registered to at
    // most one pump at any given time. Only transports created via
    // TransportFactory can be registered.
-   virtual PassRef<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) = 0;
+   virtual PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener) = 0;
 
-   // Deregisters a transport from a pump. This happens automatically if the
+   // Detachs a transport from a pump. This happens automatically if the
    // transport is closed, a status error or hangup is generated, or a Read()
    // operation returns Ended. It is safe to deregister a transport multiple
    // times.
-   virtual void Deregister(Ref<Transport> transport) = 0;
+   virtual void Detach(Ref<Transport> transport) = 0;
 };
 
 #if defined(__linux__) || defined(__APPLE__) || defined(BSD) || defined(__MACH__)
