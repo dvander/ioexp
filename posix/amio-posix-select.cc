@@ -37,7 +37,7 @@ SelectImpl::~SelectImpl()
 }
 
 PassRef<IOError>
-SelectImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener)
+SelectImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, EventFlags eventMask)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport)
@@ -59,10 +59,10 @@ SelectImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener)
   if (transport->fd() > fd_watermark_)
     fd_watermark_ = transport->fd();
 
-  // Automatically listen for reads, so it's possible to simply wait for data.
-  // We don't bother listening for writes since we can always just try calling
-  // Transport::Write().
-  FD_SET(transport->fd(), &read_fds_);
+  if (eventMask & Event_Read)
+    FD_SET(transport->fd(), &read_fds_);
+  if (eventMask & Event_Write)
+    FD_SET(transport->fd(), &write_fds_);
   return nullptr;
 }
 
@@ -105,7 +105,7 @@ SelectImpl::Poll(int timeoutMs)
       continue;
 
     if (FD_ISSET(i, &read_fds)) {
-      // We pre-emptively remove this descriptor to simulate edge-triggering.
+      // Pre-emptively remove this descriptor to simulate edge-triggering.
       FD_CLR(i, &read_fds_);
 
       fds_[i].transport->listener()->OnReadReady(fds_[i].transport);
@@ -113,7 +113,7 @@ SelectImpl::Poll(int timeoutMs)
         continue;
     }
     if (FD_ISSET(i, &write_fds)) {
-      // We pre-emptively remove this descriptor to simulate edge-triggering.
+      // Pre-emptively remove this descriptor to simulate edge-triggering.
       FD_CLR(i, &write_fds_);
 
       fds_[i].transport->listener()->OnWriteReady(fds_[i].transport);
@@ -123,12 +123,13 @@ SelectImpl::Poll(int timeoutMs)
   return nullptr;
 }
 
-void
+PassRef<IOError>
 SelectImpl::onReadWouldBlock(PosixTransport *transport)
 {
   int fd = transport->fd();
   assert(fds_[fd].transport);
   FD_SET(fd, &read_fds_);
+  return nullptr;
 }
 
 PassRef<IOError>

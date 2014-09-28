@@ -20,7 +20,7 @@ class PosixPoller : public Poller
 {
  public:
   // Notifies the pump that the socket would block reading.
-  virtual void onReadWouldBlock(PosixTransport *transport) = 0;
+  virtual ke::PassRef<IOError> onReadWouldBlock(PosixTransport *transport) = 0;
 
   // Notifies the pump that the socket would block writing.
   virtual ke::PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) = 0;

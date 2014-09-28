@@ -62,6 +62,7 @@ PosixTransport::Read(IOResult *result, uint8_t *buffer, size_t maxlength)
     return false;
   }
 
+  result->Completed = true;
   if (rv == 0) {
     pump_->unhook(this);
     result->Ended = true;
@@ -89,6 +90,7 @@ PosixTransport::Write(IOResult *result, const uint8_t *buffer, size_t maxlength)
     return false;
   }
 
+  result->Completed = true;
   result->Bytes = size_t(rv);
   return true;
 }

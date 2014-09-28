@@ -62,7 +62,7 @@ EpollImpl::~EpollImpl()
 }
 
 PassRef<IOError>
-EpollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener)
+EpollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, EventFlags eventMask)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport)
@@ -83,15 +83,17 @@ EpollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener)
       return eOutOfMemory;
   }
 
-  // By default we wait for reads (see the comment in the select pump).
-  int defaultEvents = EPOLLIN | EPOLLET;
-  if (can_use_rdhup_)
-    defaultEvents |= EPOLLRDHUP;
-
   // Hook up events.
   epoll_event pe;
-  pe.events = defaultEvents;
   pe.data.ptr = (void *)slot;
+  pe.events = EPOLLET;
+  if (can_use_rdhup_)
+    pe.events |= EPOLLRDHUP;
+  if (eventMask & Event_Read)
+    pe.events |= EPOLLIN;
+  if (eventMask & Event_Write)
+    pe.events |= EPOLLOUT;
+
   if (epoll_ctl(ep_, EPOLL_CTL_ADD, transport->fd(), &pe) == -1) {
     Ref<IOError> err = new PosixError();
     free_slots_.append(slot);
@@ -101,7 +103,7 @@ EpollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener)
   // Hook up the transport.
   listeners_[slot].transport = transport;
   listeners_[slot].modified = generation_;
-  listeners_[slot].watching_writes = false;
+  listeners_[slot].pe = pe;
   transport->attach(this, listener);
   transport->setUserData(slot);
   return nullptr;
@@ -174,26 +176,30 @@ EpollImpl::Interrupt()
   abort();
 }
 
-void
+PassRef<IOError>
 EpollImpl::onReadWouldBlock(PosixTransport *transport)
 {
-  // Do nothing... epoll is edge-triggered.
+  size_t slot = transport->getUserData();
+  if (!(listeners_[slot].pe.events & EPOLLIN)) {
+    listeners_[slot].pe.events |= EPOLLIN;
+    if (epoll_ctl(ep_, EPOLL_CTL_MOD, transport->fd(), &listeners_[slot].pe) == -1) {
+      listeners_[slot].pe.events &= ~EPOLLIN;
+      return new PosixError();
+    }
+  }
+  return nullptr;
 }
 
 PassRef<IOError>
 EpollImpl::onWriteWouldBlock(PosixTransport *transport)
 {
   size_t slot = transport->getUserData();
-  if (!listeners_[slot].watching_writes) {
-    // Add EPOLLOUT to the events we watch.
-    epoll_event pe;
-    pe.events = EPOLLIN | EPOLLOUT | EPOLLET;
-    if (can_use_rdhup_)
-      pe.events |= EPOLLRDHUP;
-    pe.data.ptr = (void *)slot;
-    if (epoll_ctl(ep_, EPOLL_CTL_MOD, transport->fd(), &pe) == -1)
+  if (!(listeners_[slot].pe.events & EPOLLOUT)) {
+    listeners_[slot].pe.events |= EPOLLOUT;
+    if (epoll_ctl(ep_, EPOLL_CTL_MOD, transport->fd(), &listeners_[slot].pe) == -1) {
+      listeners_[slot].pe.events &= ~EPOLLOUT;
       return new PosixError();
-    listeners_[slot].watching_writes = true;
+    }
   }
   return nullptr;
 }
@@ -208,11 +214,10 @@ EpollImpl::unhook(PosixTransport *transport)
   assert(fd != -1);
   assert(listeners_[slot].transport == transport);
 
-  // For compatibility with older Linux kernels we use a bogus event pointer
-  // instead of nullptr.
-  epoll_event pe;
-  epoll_ctl(ep_, EPOLL_CTL_DEL, fd, &pe);
+  epoll_ctl(ep_, EPOLL_CTL_DEL, fd, &listeners_[slot].pe);
 
+  // Just for safety, we detach here in case the assignment below drops the
+  // last ref to the transport.
   transport->detach();
 
   listeners_[slot].transport = nullptr;

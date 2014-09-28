@@ -11,6 +11,7 @@
 #define _include_amio_linux_epoll_pump_h_
 
 #include "include/amio.h"
+#include "include/amio-posix.h"
 #include "posix/amio-posix-transport.h"
 #include "posix/amio-posix-base-poller.h"
 #include <sys/time.h>
@@ -34,11 +35,11 @@ class EpollImpl : public PosixPoller
 
   PassRef<IOError> Initialize();
   PassRef<IOError> Poll(int timeoutMs) override;
-  PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener) override;
+  PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
   void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
 
-  void onReadWouldBlock(PosixTransport *transport) override;
+  PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
   PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
   void unhook(PosixTransport *transport) override;
 
@@ -52,7 +53,7 @@ class EpollImpl : public PosixPoller
   struct PollData {
     Ref<PosixTransport> transport;
     size_t modified;
-    bool watching_writes;
+    epoll_event pe;
   };
 
   int ep_;

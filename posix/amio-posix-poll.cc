@@ -39,8 +39,10 @@ PollImpl::~PollImpl()
     if (fd == -1)
       continue;
 
-    if (fds_[fd].transport)
+    if (fds_[fd].transport) {
       fds_[fd].transport->detach();
+      fds_[fd].transport = nullptr;
+    }
   }
 }
 
@@ -53,7 +55,7 @@ PollImpl::Initialize()
 }
 
 PassRef<IOError>
-PollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener)
+PollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, EventFlags eventMask)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport)
@@ -72,11 +74,16 @@ PollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener)
   assert(size_t(transport->fd()) < fds_.length());
 
   // By default we wait for reads (see the comment in the select pump).
-  int defaultEvents = POLLIN | POLLERR | POLLHUP;
+  int defaultEvents = POLLERR | POLLHUP;
 #if defined(__linux__)
   if (can_use_rdhup_)
     defaultEvents |= POLLRDHUP;
 #endif
+
+  if (eventMask & Event_Read)
+    defaultEvents |= POLLIN;
+  if (eventMask & Event_Write)
+    defaultEvents |= POLLOUT;
 
   size_t slot;
   struct pollfd pe;
@@ -186,7 +193,7 @@ PollImpl::Interrupt()
   abort();
 }
 
-void
+PassRef<IOError>
 PollImpl::onReadWouldBlock(PosixTransport *transport)
 {
   int fd = transport->fd();
@@ -194,6 +201,7 @@ PollImpl::onReadWouldBlock(PosixTransport *transport)
   assert(poll_events_[slot].fd == fd);
 
   poll_events_[slot].events |= POLLIN;
+  return nullptr;
 }
 
 PassRef<IOError>
@@ -218,6 +226,8 @@ PollImpl::unhook(PosixTransport *transport)
   size_t slot = fds_[fd].slot;
   assert(poll_events_[slot].fd == fd);
 
+  // Note: just for safety, we call this after we're done with the transport,
+  // in case the assignment below drops the last ref.
   transport->detach();
 
   poll_events_[slot].fd = -1;

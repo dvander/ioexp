@@ -34,18 +34,17 @@ class PollImpl : public PosixPoller
 
   PassRef<IOError> Initialize();
   PassRef<IOError> Poll(int timeoutMs) override;
-  PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener) override;
+  PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
   void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
 
-  void onReadWouldBlock(PosixTransport *transport) override;
+  PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
   PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
   void unhook(PosixTransport *transport) override;
 
  private:
   bool isEventValid(size_t slot) const {
-    return slot < fds_.length() &&
-           fds_[slot].modified != generation_;
+    return slot < fds_.length() && fds_[slot].modified != generation_;
   }
 
  private:

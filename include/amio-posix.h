@@ -21,6 +21,9 @@ struct AMIO_CLASS IOResult
   // Set if there was an error.
   ke::Ref<IOError> Error;
 
+  // True if the operation completed; false if it would block.
+  bool Completed;
+
   // True if a connection has received an orderly shutdown from its peer. If
   // Ended is true, then the socket is automatically removed from the message
   // pump.
@@ -31,7 +34,7 @@ struct AMIO_CLASS IOResult
   // another read or write event to try again.
   size_t Bytes;
 
-  IOResult() : Ended(false), Bytes(0)
+  IOResult() : Completed(false), Ended(false), Bytes(0)
   {}
 };
 
@@ -45,9 +48,12 @@ class AMIO_CLASS Transport : public ke::Refcounted<Transport>
 
   // Attempts to read a number of bytes from the transport into the provided
   // |buffer|, up to |maxlength| bytes. If any bytes are read, the number
-  // of bytes is set in |result| accordingly.
+  // of bytes is set in |result| accordingly. If the connection has been
+  // closed, |Closed| will be true in |result|.
   //
-  // If the connection has been closed, |Closed| will be true in |result|.
+  // If the operation cannot be completed without blocking, then |Completed|
+  // wil be false in IOResult, and the caller should wait for a notification
+  // from the status listener to call again.
   // 
   // If an error occurs, |Error| will be set in |result|, and the result will
   // be false.
@@ -55,12 +61,13 @@ class AMIO_CLASS Transport : public ke::Refcounted<Transport>
 
   // Attempts to write a number of bytes to the transport. If the transport
   // is connectionless (such as a datagram socket), all bytes are guaranteed
-  // to be sent. Otherwise, only a partial number of bytes may be sent. The
-  // number of bytes sent may be 0 without an error occurring.
+  // to be sent (unless the message it too large). Otherwise, only a partial
+  // number of bytes may be sent. The number of bytes sent may be 0 without an
+  // error occurring.
   //
-  // By default, message pumps do not listen for write events until a write
-  // event would block. To initiate write status events, you must attempt to
-  // call Write() at least once.
+  // If the operation cannot be completed without blocking, then |Completed|
+  // wil be false in IOResult, and the caller should wait for a notification
+  // from the status listener to call again.
   //
   // If an error occurs, |Error| will be set in |result|, and the result will
   // be false.
@@ -116,6 +123,14 @@ class AMIO_CLASS StatusListener : public ke::Refcounted<StatusListener>
   {}
 };
 
+enum EventFlags
+{
+  Event_Read  = 0x00000001,
+  Event_Write = 0x00000002,
+
+  Events_None = 0x00000000
+};
+
 // A poller is responsible for polling for events. It is not thread-safe.
 class AMIO_CLASS Poller
 {
@@ -139,7 +154,19 @@ class AMIO_CLASS Poller
    // Attachs a transport with the pump. A transport can be registered to at
    // most one pump at any given time. Only transports created via
    // TransportFactory can be registered.
-   virtual PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener) = 0;
+   //
+   // The eventMask specifies the initial events the poller will listen for
+   // on this transport. Since all pollers simulate edge-triggering, it is the
+   // caller's responsibility to request new events via Read() or Write().
+   //
+   // Because Read() and Write() automatically watch for events, it is not
+   // necessary to pass any event flags here as long one of those will be
+   // called.
+   virtual PassRef<IOError> Attach(
+     Ref<Transport> transport,
+     Ref<StatusListener> listener,
+     EventFlags eventMask
+   ) = 0;
 
    // Detachs a transport from a pump. This happens automatically if the
    // transport is closed, a status error or hangup is generated, or a Read()
