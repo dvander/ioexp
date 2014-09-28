@@ -57,6 +57,15 @@
     <ClInclude Include="windows\amio-windows-util.h">
       <Filter>Header Files\windows</Filter>
     </ClInclude>
+    <ClInclude Include="windows\amio-windows-socket.h">
+      <Filter>Header Files\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="windows\amio-windows-file.h">
+      <Filter>Header Files\windows</Filter>
+    </ClInclude>
+    <ClInclude Include="windows\amio-windows-select.h">
+      <Filter>Header Files\windows</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="shared\amio-errors.cc">
@@ -78,6 +87,18 @@
       <Filter>Source Files\windows</Filter>
     </ClCompile>
     <ClCompile Include="windows\amio-windows-errors.cc">
+      <Filter>Source Files\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="windows\amio-windows-iocp.cc">
+      <Filter>Source Files\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="windows\amio-windows-file.cc">
+      <Filter>Source Files\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="windows\amio-windows-socket.cc">
+      <Filter>Source Files\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="windows\amio-windows-select.cc">
       <Filter>Source Files\windows</Filter>
     </ClCompile>
   </ItemGroup>

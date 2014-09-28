@@ -57,6 +57,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies);ws2_32.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -85,7 +86,10 @@
     <ClInclude Include="windows\amio-windows-base-poller.h" />
     <ClInclude Include="windows\amio-windows-errors.h" />
     <ClInclude Include="windows\amio-windows-context.h" />
+    <ClInclude Include="windows\amio-windows-file.h" />
     <ClInclude Include="windows\amio-windows-iocp.h" />
+    <ClInclude Include="windows\amio-windows-select.h" />
+    <ClInclude Include="windows\amio-windows-socket.h" />
     <ClInclude Include="windows\amio-windows-transport.h" />
     <ClInclude Include="windows\amio-windows-util.h" />
   </ItemGroup>
@@ -94,6 +98,10 @@
     <ClCompile Include="shared\amio-string.cc" />
     <ClCompile Include="windows\amio-windows-context.cc" />
     <ClCompile Include="windows\amio-windows-errors.cc" />
+    <ClCompile Include="windows\amio-windows-file.cc" />
+    <ClCompile Include="windows\amio-windows-iocp.cc" />
+    <ClCompile Include="windows\amio-windows-select.cc" />
+    <ClCompile Include="windows\amio-windows-socket.cc" />
     <ClCompile Include="windows\amio-windows-transport.cc" />
     <ClCompile Include="windows\amio-windows-util.cc" />
     <ClCompile Include="winmain.cpp" />
