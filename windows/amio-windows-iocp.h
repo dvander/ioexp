@@ -16,18 +16,28 @@ namespace amio {
 
 using namespace ke;
 
+static const size_t kDefaultMaxEventsPerPortPoll;
+
 class CompletionPort : public WinBasePoller
 {
  public:
-  Ref<IOError> Initialize(size_t numConcurrentThreads);
+  CompletionPort();
+  ~CompletionPort();
+  PassRef<IOError> Initialize(size_t numConcurrentThreads);
 
-  Ref<IOError> Poll(int timeoutMs) override;
-  Ref<IOError> Attach(Ref<Transport> transport, Ref<IOListener> listener) override;
-  void ForceShutdown() override;
+  PassRef<IOError> Poll(int timeoutMs) override;
+  PassRef<IOError> Attach(Ref<Transport> transport, Ref<IOListener> listener) override;
   bool EnableImmediateDelivery() override;
+  bool RequireImmediateDelivery() override;
+  void WaitAndDiscardPendingEvents() override;
 
  private:
-  HANDLE handle_;
+  OVERLAPPED_ENTRY *GetBufferForPoll();
+
+ private:
+  HANDLE port_;
+  bool immediate_delivery_;
+  bool immediate_delivery_required_;
 };
 
 } // namespace amio

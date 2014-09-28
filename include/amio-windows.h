@@ -12,7 +12,9 @@
 
 #include <amio-types.h>
 #define WIN32_LEAN_AND_MEAN
+#define FD_SETSIZE 256
 #include <Windows.h>
+#include <WinSock2.h>
 
 namespace amio {
 
@@ -101,6 +103,14 @@ struct AMIO_CLASS IOResult
   // Ended is true, then the socket is automatically removed from the poller.
   bool Ended;
 
+  // When reading messages from a message-based stream (such as message pipes,
+  // or UDP), and the given buffer was not large enough to read the entire
+  // message, one of these will be true. Whether or not the remaining data can
+  // be read depends on which is set. MoreData indicates that it can; Truncated
+  // indicates that it cannot.
+  bool MoreData;
+  bool Truncated;
+
   // If true, the operation completed immediately and |Bytes| contains the
   // number of bytes that completed. Any structures associated with the IO
   // operation may be freed or re-used.
@@ -119,10 +129,12 @@ struct AMIO_CLASS IOResult
   // Otherwise, it is null.
   Ref<IOContext> Context;
 
-  IOResult() : Ended(false), Completed(false), Bytes(0)
+  IOResult()
+   : Ended(false), MoreData(false), Truncated(false), Completed(false), Bytes(0)
   {}
   IOResult(PassRef<IOError> error, PassRef<IOContext> context)
-   : Error(error), Ended(false), Completed(false), Bytes(0), Context(context)
+   : Error(error), Ended(false), MoreData(false), Truncated(false),
+     Completed(false), Bytes(0), Context(context)
   {}
 };
 
@@ -149,12 +161,11 @@ class AMIO_CLASS Transport : public ke::RefcountedThreadsafe<Transport>
   // event will be delivered through the poller. Otherwise, |context| is null
   // and the event will be delivered through the poller.
   //
-  // Immediate delivery must be enabled in the poller, and is not available on
-  // all versions of Windows.
-  //
   // Contexts must not be re-used until an IOResult is returned with the
   // context, either through immediate completion or delivery through an event
   // listener.
+  //
+  // Thread-safe with respect to other Transport operations, and Poller::Poll().
   virtual bool Read(IOResult *r, ke::Ref<IOContext> context, void *buffer, size_t length) = 0;
 
   // Initiates a write operation using the supplied buffer. If the operation
@@ -168,26 +179,31 @@ class AMIO_CLASS Transport : public ke::RefcountedThreadsafe<Transport>
   // event will be delivered through the poller. Otherwise, |context| is null
   // and the event will be delivered through the poller.
   //
-  // Immediate delivery must be enabled in the poller, and is not available on
-  // all versions of Windows.
-  //
   // Contexts must not be re-used until an IOResult is returned with the
   // context, either through immediate completion or delivery through an event
   // listener.
+  //
+  // Thread-safe with respect to other Transport operations, and Poller::Poll().
   virtual bool Write(IOResult *r, ke::Ref<IOContext> context, const void *buffer, size_t length) = 0;
 
   // Helper version of Read() that automatically allocates a new context.
   //
   // An optional data value may be communicated through the event.
+  //
+  // Thread-safe with respect to other Transport operations, and Poller::Poll().
   IOResult Read(void *buffer, size_t length, uintptr_t data = 0);
 
   // Helper version of Write() that automatically allocates a new context.
   //
   // An optional data value may be communicated through the event.
+  //
+  // Thread-safe with respect to other Transport operations, and Poller::Poll().
   IOResult Write(const void *buffer, size_t length, uintptr_t data = 0);
 
-  // Close the transport, disconnecting it from any pollers. Any pending IO
-  // operations are cancelled.
+  // Close the transport. This does not guarantee any pending IO events will
+  // be cancelled; events may still be posted to the poller if a transport is
+  // closed before all pending operations complete. However, the poller will
+  // discard any events on closed transports.
   virtual void Close() = 0;
 
   // Returns true if the handle has been closed.
@@ -195,6 +211,9 @@ class AMIO_CLASS Transport : public ke::RefcountedThreadsafe<Transport>
 
   // Returns the underlying handle associated with this transport. If the
   // transport has been closed, INVALID_HANDLE_VALUE is returned instead.
+  //
+  // IO operations must not be performed outside of the Transport API,
+  // otherwise the poller will (almost certainly) crash.
   virtual HANDLE Handle() = 0;
 
   // Access to internal types.
@@ -209,11 +228,11 @@ class AMIO_CLASS IOListener : public ke::RefcountedThreadsafe<IOListener>
   {}
 
   // Receives any read events posted from a Read() operation on a transport.
-  virtual PassRef<IOError> OnRead(ke::Ref<Transport> transport, IOResult &io)
+  virtual void OnRead(ke::Ref<Transport> transport, IOResult &io)
   {}
 
   // Receives any write events posted from a Write() operation on a transport.
-  virtual PassRef<IOError> OnWrite(ke::Ref<Transport> transport, IOResult &io)
+  virtual void OnWrite(ke::Ref<Transport> transport, IOResult &io)
   {}
 };
 
@@ -234,18 +253,33 @@ enum TransportFlags
 class AMIO_CLASS TransportFactory
 {
  public:
-  //Create a transport around an existing IO handle. The Handle must be
-  // compatible with WriteFile/ReadFile and IO Completion Ports.
-  static PassRef<IOError> CreateFromHandle(
+  // Create a transport around an existing IO handle. The Handle must be
+  // compatible with WriteFile/ReadFile and IO Completion Ports. IO operations
+  // must not be performed outside of the transport API.
+  static PassRef<IOError> CreateFromFile(
     Ref<Transport> *outp,
     HANDLE handle,
+    TransportFlags flags = kTransportDefaultFlags
+  );
+
+  // Creates a transport around an existing socket.
+  static PassRef<IOError> CreateFromSocket(
+    Ref<Transport> *outp,
+    SOCKET socket,
     TransportFlags flags = kTransportDefaultFlags
   );
 };
 
 // Polling objects. Transports cannot be removed from polling objects once
-// attached, so the poller's operating system resources will not be freed
-// until all transports are closed.
+// attached. Once attached, IO operations on the transport will always
+// associate the underlying poller.
+//
+// Note that contexts are not destroyed when a poller is destroyed, because
+// of the way asynchronous I/O works in Windows. Pending events may be sitting
+// in the kernel's queue, or in the poller's queue. It is the user's
+// responsibility to make sure these are flushed, otherwise once the poller is
+// deleted or no longer in use, the C++ memory for the contexts (and their
+// transports) will be leaked.
 //
 // Functions are not thread-safe unless otherwise noted.
 class AMIO_CLASS Poller : public ke::RefcountedThreadsafe<Poller>
@@ -257,24 +291,28 @@ class AMIO_CLASS Poller : public ke::RefcountedThreadsafe<Poller>
   // Poll for new events. If timeoutMs is 0, then polling will not block. If
   // timeoutMs is greater than 0, it may block for at most that many
   // milliseconds. If timeoutMs is kNoTimeout, it may block indefinitely.
-  virtual Ref<IOError> Poll(int timeoutMs) = 0;
+  //
+  // Poll() may be called from any thread.
+  virtual PassRef<IOError> Poll(int timeoutMs) = 0;
 
   // Register a transport to an IO listener. The transport is permanently
   // attached to the poller; it is automatically removed when the transport
   // is closed.
-  virtual Ref<IOError> Attach(Ref<Transport> transport, Ref<IOListener> listener) = 0;
+  //
+  // Attach() may be called from any thread.
+  virtual PassRef<IOError> Attach(Ref<Transport> transport, Ref<IOListener> listener) = 0;
 
-  // Force all pending transports to close and cancel all pending I/O. This
-  // does not necessarily guarantee that the poller no longer has any
-  // references (for example, one may have been created from a duplicated
-  // handle).
-  virtual void ForceShutdown() = 0;
+  // Wait for all pending IO events to complete, and discard them. This will
+  // ensure that no memory is leaked before deleting a Poller. All other polling
+  // threads should be stopped before calling this function. This will also
+  // block until all events have been received.
+  virtual void WaitAndDiscardPendingEvents() = 0;
 
-  // Attempt to force the poller into immediate delivery mode. If immediate
-  // delivery mode is enabled, Read() and Write() calls may return immediately
-  // (if able) without posting an event to the poller. Immediate delivery is
-  // only available on Windows Vista or higher, or Windows Server 2008 or
-  // higher.
+  // Attempt to put attached transports into immediate delivery mode. If
+  // immediate delivery mode is enabled, Read() and Write() calls may return
+  // immediately (if able) without posting an event to the poller. Immediate
+  // delivery is only available on Windows Vista or higher, or Windows Server
+  // 2008 or higher.
   //
   // It is recommended to use this mode when possible as it means less events
   // being delivered. However, code must be careful to account for when it is
@@ -284,17 +322,163 @@ class AMIO_CLASS Poller : public ke::RefcountedThreadsafe<Poller>
   // Returns true on success, false if immediate delivery mode is not
   // available.
   virtual bool EnableImmediateDelivery() = 0;
+
+  // This is the same as EnableImmediateDelivery, except that if a transport
+  // cannot enter immediate delivery mode, it will fail to attach. This allows
+  // you to handle less edge cases.
+  virtual bool RequireImmediateDelivery() = 0;
 };
 
 class AMIO_CLASS PollerFactory
 {
  public:
   // Create a poller. By default the backing implementation uses IOCP
-  // (I/O Completion Ports) for a single thread.
+  // (I/O Completion Ports) for a single thread, using the default batch
+  // version if supported.
   static PassRef<IOError> CreatePoller(Ref<Poller> *poller);
 
   // Create an I/O Completion Port poller.
   static PassRef<IOError> CreateCompletionPort(Ref<Poller> *poller, size_t nConcurrentThreads);
+};
+
+// Flags for Socket:CreateFrom.
+enum SocketFlags
+{
+  // Override the default behavior of sockets and do not automatically
+  // close their underlying operating system resources.
+  kSocketNoAutoClose       = 0x00000001,
+  
+  kSocketDefaultFlags      = 0x00000000
+};
+
+class WinSocket;
+
+// For sockets, and sockets only, Windows has Unix-like I/O API. We make that
+// available here, as it is more convenient, albeit less efficient than IOCP.
+// This API is not compatible with the Transport-based API, and it is not
+// threadsafe.
+class AMIO_CLASS Socket : public ke::RefcountedThreadsafe<Socket>
+{
+ public:
+  virtual ~Socket()
+  {}
+
+  // Create a socket around an existing socket handle.
+  static PassRef<IOError> CreateFrom(Ref<Socket> *outp, SOCKET s, SocketFlags flags);
+
+  // Attempts to read a number of bytes from the socket into the provided
+  // |buffer|, up to |maxlength| bytes. If any bytes are read, the number
+  // of bytes is set in |result| accordingly.
+  //
+  // If the connection has been closed, |Closed| will be true in |result|.
+  // 
+  // If an error occurs, |Error| will be set in |result|, and the result will
+  // be false.
+  virtual bool Read(IOResult *result, void *buffer, size_t maxlength) = 0;
+
+  // Attempts to write a number of bytes to the socket. If the socket
+  // is connectionless (such as a datagram socket), all bytes are guaranteed
+  // to be sent, unless the message is too large. For streams, only a partial
+  // number of bytes may be sent. The number of bytes sent may be 0 without
+  // an error occurring.
+  //
+  // By default, socket pollers do not listen for write events until a write
+  // event would block. To initiate write status events, you must attempt to
+  // call Write() at least once.
+  //
+  // If an error occurs, |Error| will be set in |result|, and the result will
+  // be false.
+  virtual bool Write(IOResult *result, const void *buffer, size_t maxlength) = 0;
+
+  // Closes the transport.
+  virtual void Close() = 0;
+
+  // Returns whether or not the transport has been closed.
+  virtual bool Closed() const = 0;
+
+  // Return the underlying socket.
+  virtual SOCKET Handle() const = 0;
+
+  // Internal function to cast sockets to their underlying type.
+  virtual WinSocket *toWinSocket() = 0;
+};
+
+// Used to receive notifications about status changes.
+class AMIO_CLASS SocketListener : public ke::RefcountedThreadsafe<SocketListener>
+{
+ public:
+  virtual ~SocketListener()
+  {}
+
+  // Called when data is available for non-blocking reading.
+  virtual void OnReadReady(ke::Ref<Socket> socket)
+  {}
+
+  // Called when data is available for non-blocking sending.
+  virtual void OnWriteReady(ke::Ref<Socket> socket)
+  {}
+
+  // Called when a connection has been closed by a peer. This is the same as
+  // Read() returning a Closed status, however, some message pumps can detect
+  // this as its own event and return it earlier.
+  //
+  // If this event has been received, the socket is automatically
+  // deregistered beforehand.
+  virtual void OnHangup(ke::Ref<Socket> socket)
+  {}
+
+  // Called when an error state is received.
+  //
+  // If this event has been received, the socket is automatically
+  // deregistered beforehand.
+  virtual void OnError(ke::Ref<Socket> socket, ke::Ref<IOError> error)
+  {}
+};
+
+// Poller variant only for sockets. SocketPollers are not thread-safe.
+class AMIO_CLASS SocketPoller
+{
+ public:
+   // Poll for new events. If |timeoutMs| is greater than zero, Poll() may block
+   // for at most that many milliseconds. If the poller has no sockets registered 
+   // Poll() will exit immediately without an error.
+   //
+   // An error is returned if the poll itself failed; individual read/write
+   // failures are propagated through status listeners.
+   //
+   // Poll() is not re-entrant.
+   virtual PassRef<IOError> Poll(int timeoutMs = kNoTimeout) = 0;
+
+   // Registers a socket with the pump. A socket can be registered to at
+   // most one pump at any given time. Only sockets created via
+   // SocketFactory can be registered.
+   virtual PassRef<IOError> Attach(Ref<Socket> socket, Ref<SocketListener> listener) = 0;
+
+   // Deregisters a socket from a pump. This happens automatically if the
+   // socket is closed, a status error or hangup is generated, or a Read()
+   // operation returns Ended. It is safe to deregister a socket multiple
+   // times.
+   virtual void Detach(Ref<Socket> socket) = 0;
+};
+
+class AMIO_CLASS SocketPollerFactory
+{
+  // Creates the best socket poller available.
+  static PassRef<IOError> CreatePoller();
+
+  // Create a poll() poller. This can only be used with socket-based
+  // transports. maxEventsPerPoll defaults to 64 if left as 0.
+  //
+  // Only available on Windows vista or higher.
+  //
+  // Due to a bug (http://curl.haxx.se/mail/lib-2012-10/0038.html) in WSAPoll,
+  // we do not create a WSAPoll-based socket poller by default, even if it is
+  // available.
+  static PassRef<IOError> CreateSocketPollImpl(Ref<Poller> *poller, size_t maxEventsPerPoll = 0);
+
+  // Create a select() poller. This can only be used with socket-based
+  // transports.
+  static PassRef<IOError> CreateSocketSelectImpl(Ref<Poller> *poller);
 };
 
 } // namespace amio

@@ -18,6 +18,11 @@ Ref<GenericError> amio::eContextAlreadyAssociated = new GenericError("context is
 Ref<GenericError> amio::eTransportNotAttached = new GenericError("transport is not associated with a poller");
 Ref<GenericError> amio::eLengthOutOfRange = new GenericError("number of bytes is too large");
 Ref<GenericError> amio::eInvalidContext = new GenericError("invalid context");
+Ref<GenericError> amio::eIncompatibleTransport = new GenericError("transport is not a WinTransport");
+Ref<GenericError> amio::eTransportClosed = new GenericError("transport is closed");
+Ref<GenericError> amio::eSocketClosed = new GenericError("socket is closed");
+Ref<GenericError> amio::eIncompatibleSocket = new GenericError("socket is not a WinSocket");
+Ref<GenericError> amio::eSocketAlreadyAttached = new GenericError("socket is already attached");
 
 WinError::WinError()
  : error_(GetLastError()),

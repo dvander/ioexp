@@ -11,8 +11,10 @@
 #include "amio-errors.h"
 #include "amio-windows-errors.h"
 #include "amio-windows-util.h"
-#include "amio-windows-transport.h"
+#include "amio-windows-file.h"
+#include "amio-windows-socket.h"
 #include "amio-windows-iocp.h"
+#include <WinSock2.h>
 
 using namespace amio;
 using namespace ke;
@@ -21,13 +23,6 @@ using namespace ke;
 # define FILE_SKIP_COMPLETION_PORT_ON_SUCCESS 0x1
 #endif
 typedef BOOL (WINAPI *SetFileCompletionNotificationModes_t)(_In_ HANDLE FileHandle, _In_ UCHAR Flags);
-
-PassRef<IOError>
-TransportFactory::CreateFromHandle(Ref<Transport> *outp, HANDLE handle, TransportFlags flags)
-{
-  *outp = new WinTransport(handle, flags);
-  return nullptr;
-}
 
 static BOOL sCheckedImmediateDelivery = FALSE;
 static SetFileCompletionNotificationModes_t fnSetFileCompletionNotificationModes;
@@ -41,7 +36,9 @@ amio::CanEnableImmediateDelivery()
   if (sCheckedImmediateDelivery)
     return false;
 
+  // Set this early so we can fail out at any time, and not re-check again.
   sCheckedImmediateDelivery = true;
+
   HMODULE kernel32 = LoadLibraryA("Kernel32.dll");
   if (!kernel32)
     return false;
@@ -76,5 +73,25 @@ PollerFactory::CreateCompletionPort(Ref<Poller> *poller, size_t numConcurrentThr
   if (error)
     return error;
   *poller = port;
+  return nullptr;
+}
+
+Ref<GenericError> eInvalidFlags = new GenericError("invalid flags");
+
+PassRef<IOError>
+TransportFactory::CreateFromFile(Ref<Transport> *outp, HANDLE handle, TransportFlags flags)
+{
+  if (flags & ~(kTransportNoAutoClose))
+    return eInvalidFlags;
+  *outp = new FileTransport(handle, flags);
+  return nullptr;
+}
+
+PassRef<IOError>
+TransportFactory::CreateFromSocket(Ref<Transport> *outp, SOCKET socket, TransportFlags flags)
+{
+  if (flags & ~(kTransportNoAutoClose))
+    return eInvalidFlags;
+  *outp = new SocketTransport(socket, flags);
   return nullptr;
 }

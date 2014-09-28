@@ -40,6 +40,10 @@ extern Ref<GenericError> eContextAlreadyAssociated;
 extern Ref<GenericError> eInvalidContext;
 extern Ref<GenericError> eTransportNotAttached;
 extern Ref<GenericError> eLengthOutOfRange;
+extern Ref<GenericError> eIncompatibleTransport;
+extern Ref<GenericError> eSocketClosed;
+extern Ref<GenericError> eIncompatibleSocket;
+extern Ref<GenericError> eSocketAlreadyAttached;
 
 } // namespace amio
 

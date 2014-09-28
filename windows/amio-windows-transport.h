@@ -15,46 +15,43 @@ namespace amio {
 
 using namespace ke;
 
+class WinBasePoller;
+
 class WinTransport : public Transport
 {
  public:
-  WinTransport(HANDLE handle, TransportFlags flags);
-  ~WinTransport();
+  WinTransport(TransportFlags flags);
 
-  // Initiates a read operation on the supplied buffer. The buffer must be held
-  // alive until the listener is notified that the event has completed. If the
-  // Read() operation immediately returns an error, then no IOEvent will be
-  // posted.
-  virtual bool Read(IOResult *r, Ref<IOContext> context, void *buffer, size_t length) override;
-
-  // Initiates a write operation on the supplied buffer. The buffer must be held
-  // alive until the listener is notified that the event has completed. If the
-  // Write() operation immediately returns an error, then no IOEvent will be
-  // posted.
-  virtual bool Write(IOResult *r, Ref<IOContext> context, const void *buffer, size_t length) override;
-
+  WinTransport *toWinTransport() override {
+    return this;
+  }
   virtual void Close() override;
-  WinTransport *toWinTransport() {
-    return static_cast<WinTransport *>(this);
-  }
-  virtual bool Closed() override {
-    return handle_ == INVALID_HANDLE_VALUE;
-  }
-  virtual HANDLE Handle() override {
-    return handle_;
-  }
+
+  // This is only called if the poller has determined ahead of time that
+  // immediate delivery can be used.
+  virtual PassRef<IOError> EnableImmediateDelivery() = 0;
+
+  WinContext *checkOp(IOResult *r, Ref<IOContext> context, size_t length);
 
   PassRef<IOListener> listener() const {
     return listener_;
   }
+  PassRef<WinBasePoller> poller() const {
+    return poller_;
+  }
   bool ImmediateDelivery() const {
     return !!(flags_ & kTransportImmediateDelivery);
   }
+  void attach(PassRef<WinBasePoller> poller, PassRef<IOListener> listener) {
+    assert(!poller_ && !listener_);
+    poller_ = poller;
+    listener_ = listener;
+  }
 
  protected:
-  HANDLE handle_;
   TransportFlags flags_;
   Ref<IOListener> listener_;
+  Ref<WinBasePoller> poller_;
 };
 
 } // namespace amio

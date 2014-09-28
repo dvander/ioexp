@@ -15,8 +15,18 @@ namespace amio {
 
 using namespace ke;
 
+class WinTransport;
+class WinBasePoller;
+
 class WinContext : public IOContext
 {
+ public:
+  enum State {
+    None,
+    Reading,
+    Writing
+  };
+
  public:
   WinContext(uintptr_t data = 0);
 
@@ -41,20 +51,23 @@ class WinContext : public IOContext
     );
   }
 
-  bool associated() const {
-    return associated_;
+  State state() const {
+    return state_;
   }
-  void unassociate() {
-    associated_ = false;
+  PassRef<WinTransport> transport() {
+    return transport_;
   }
-  void associate() {
-    associated_ = true;
-  }
+
+  // When attaching for asynchronous IO, we add an extra ref in case the caller
+  // loses all refs to the context.
+  void attach(State state, PassRef<WinTransport> transport);
+  void detach();
 
  private:
   OVERLAPPED ov_;
   uintptr_t data_;
-  bool associated_;
+  State state_;
+  Ref<WinTransport> transport_;
 };
 
 } // namespace amio

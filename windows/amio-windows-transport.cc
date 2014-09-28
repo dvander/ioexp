@@ -1,15 +1,16 @@
 // vim: set ts=2 sw=2 tw=99 et:
 // 
-// Copyright (C) 2014 David Anderson
+// copyright (c) 2014 david anderson
 // 
-// This file is part of the AlliedModders I/O Library.
+// this file is part of the alliedmodders i/o library.
 // 
-// The AlliedModders I/O library is licensed under the GNU General Public
-// License, version 3 or higher. For more information, see LICENSE.txt
+// the alliedmodders i/o library is licensed under the gnu general public
+// license, version 3 or higher. for more information, see license.txt
 //
 #include <amio-windows.h>
 #include "amio-windows-context.h"
 #include "amio-windows-errors.h"
+#include "amio-windows-base-poller.h"
 #include "amio-windows-transport.h"
 #include "amio-windows-util.h"
 #include <limits.h>
@@ -17,126 +18,43 @@
 using namespace amio;
 using namespace ke;
 
-WinTransport::WinTransport(HANDLE handle, TransportFlags flags)
- : handle_(handle),
-   flags_(flags)
-{
-  if (flags_ & kTransportImmediateDelivery)
-    flags_ = TransportFlags(flags & ~kTransportImmediateDelivery);
-}
+Ref<GenericError> eTransportNotAttached = new GenericError("transport is not attached");
 
-WinTransport::~WinTransport()
+WinTransport::WinTransport(TransportFlags flags)
+ : flags_(flags)
 {
-  Close();
 }
 
 void
 WinTransport::Close()
 {
-  if (handle_ == INVALID_HANDLE_VALUE)
-    return;
-
-  if (!(flags_ & kTransportNoAutoClose))
-    CloseHandle(handle_);
-  handle_ = INVALID_HANDLE_VALUE;
+  // Clear the listener and poller, just to get rid of its ref early.
+  poller_ = nullptr;
+  listener_ = nullptr;
 }
 
-bool
-WinTransport::Read(IOResult *r, Ref<IOContext> baseContext, void *buffer, size_t length)
+WinContext *
+WinTransport::checkOp(IOResult *r, Ref<IOContext> baseContext, size_t length)
 {
+  // Okay to not Ref<> - it's held alive above.
   WinContext *context = baseContext->toWinContext();
-  if (!context) {
+  if (!context || Closed()) {
     *r = IOResult(eInvalidContext, baseContext);
-    return false;
+    return nullptr;
   }
-  if (context->associated()) {
+  if (!poller_) {
+    *r = IOResult(eTransportNotAttached, context);
+    return nullptr;
+  }
+  if (context->state() != WinContext::None) {
     *r = IOResult(eContextAlreadyAssociated, context);
-    return false;
+    return nullptr;
   }
   if (length > INT_MAX) {
     *r = IOResult(eLengthOutOfRange, context);
-    return false;
+    return nullptr;
   }
-
-  // AddRef the context before we be potentially it in the port.
-  context->AddRef();
-  *r = IOResult();
-
-  DWORD bytesRead;
-  if (ReadFile(handle_, buffer, (DWORD)length, &bytesRead, context->ov())) {
-    r->Completed = true;
-    r->Bytes = size_t(bytesRead);
-    if (ImmediateDelivery())
-      r->Context = context;
-  } else {
-    DWORD error = GetLastError();
-    switch (error) {
-    case ERROR_IO_PENDING:
-      break;
-
-    case ERROR_HANDLE_EOF:
-      r->Completed = true;
-      r->Ended = true;
-      r->Bytes = size_t(bytesRead);
-      if (ImmediateDelivery())
-        r->Context = context;
-      break;
-
-    default:
-      *r = IOResult(new WinError(error), context);
-      return false;
-    }
-  }
-
-  // If an event was posted, force an extra ref on the context.
-  if (!r->Context)
-    context->AddRef();
-  return true;
-}
-
-bool
-WinTransport::Write(IOResult *r, Ref<IOContext> baseContext, const void *buffer, size_t length)
-{
-  WinContext *context = baseContext->toWinContext();
-  if (!context) {
-    *r = IOResult(eInvalidContext, baseContext);
-    return false;
-  }
-  if (context->associated()) {
-    *r = IOResult(eContextAlreadyAssociated, context);
-    return false;
-  }
-  if (length > INT_MAX) {
-    *r = IOResult(eLengthOutOfRange, context);
-    return false;
-  }
-
-  // AddRef the context before we be potentially it in the port.
-  context->AddRef();
-  *r = IOResult();
-
-  DWORD bytesRead;
-  if (WriteFile(handle_, buffer, (DWORD)length, &bytesRead, context->ov())) {
-    r->Completed = true;
-    r->Bytes = size_t(bytesRead);
-    if (ImmediateDelivery())
-      r->Context = context;
-  } else {
-    DWORD error = GetLastError();
-    switch (error) {
-    case ERROR_IO_PENDING:
-      break;
-
-    default:
-      *r = IOResult(new WinError(error), context);
-      return false;
-    }
-  }
-
-  // If an event was posted, force an extra ref on the context.
-  if (!r->Context)
-    context->AddRef();
-  return true;
+  return context;
 }
 
 IOResult
