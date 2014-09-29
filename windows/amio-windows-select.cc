@@ -32,7 +32,7 @@ SelectImpl::~SelectImpl()
 }
 
 PassRef<IOError>
-SelectImpl::Attach(Ref<Socket> baseSocket, Ref<SocketListener> listener)
+SelectImpl::Attach(Ref<Socket> baseSocket, Ref<SocketListener> listener, EventFlags eventMask)
 {
   WinSocket *socket = baseSocket->toWinSocket();
   if (!socket)
@@ -58,8 +58,7 @@ SelectImpl::Attach(Ref<Socket> baseSocket, Ref<SocketListener> listener)
   socket->setUserData(slot);
   fds_[slot].modified = generation_;
   fds_[slot].socket = socket;
-  fds_[slot].watching_writes = false;
-  fds_[slot].watching_writes = false;
+  fds_[slot].events = eventMask;
   return nullptr;
 }
 
@@ -80,9 +79,9 @@ SelectImpl::Poll(int timeoutMs)
   FD_ZERO(&write_fds_);
 
   for (size_t i = 0; i < fds_.length(); i++) {
-    if (fds_[i].watching_reads)
+    if (fds_[i].events & Event_Read)
       FD_SET(fds_[i].socket->Handle(), &read_fds_);
-    if (fds_[i].watching_writes)
+    if (fds_[i].events & Event_Write)
       FD_SET(fds_[i].socket->Handle(), &write_fds_);
   }
 
@@ -94,25 +93,25 @@ SelectImpl::Poll(int timeoutMs)
     timeoutp = &timeout;
   }
 
-  generation_++;
   int rv = select(0, &read_fds_, &write_fds_, nullptr, timeoutp);
   if (rv == SOCKET_ERROR)
     return new WinError(WSAGetLastError());
-
   assert(rv >= 0);
+
+  generation_++;
   for (size_t i = 0; i < fds_.length() && rv >= 0; i++) {
     if (fds_[i].modified == generation_)
       continue;
 
-    if (fds_[i].watching_reads && FD_ISSET(fds_[i].socket->Handle(), &read_fds_)) {
-      fds_[i].watching_reads = false;
+    if ((fds_[i].events & Event_Read) && FD_ISSET(fds_[i].socket->Handle(), &read_fds_)) {
+      fds_[i].events &= ~Event_Read;
       fds_[i].socket->listener()->OnReadReady(fds_[i].socket);
       if (fds_[i].modified == generation_)
         continue;
     }
 
-    if (fds_[i].watching_writes && FD_ISSET(fds_[i].socket->Handle(), &write_fds_)) {
-      fds_[i].watching_writes = false;
+    if ((fds_[i].events & Event_Write) && FD_ISSET(fds_[i].socket->Handle(), &write_fds_)) {
+      fds_[i].events &= ~Event_Write;
       fds_[i].socket->listener()->OnWriteReady(fds_[i].socket);
     }
   }
@@ -126,7 +125,7 @@ SelectImpl::onReadWouldBlock(WinSocket *socket)
   assert(socket->poller() == this);
   assert(!socket->Closed());
   size_t slot = socket->userData();
-  fds_[slot].watching_reads = true;
+  fds_[slot].events |= Event_Read;
 }
 
 PassRef<IOError>
@@ -135,7 +134,7 @@ SelectImpl::onWriteWouldBlock(WinSocket *socket)
   assert(socket->poller() == this);
   assert(!socket->Closed());
   size_t slot = socket->userData();
-  fds_[slot].watching_writes = true;
+  fds_[slot].events |= Event_Write;
   return nullptr;
 }
 

@@ -47,7 +47,7 @@ CompletionPort::Attach(Ref<Transport> baseTransport, Ref<IOListener> listener)
   if (!transport)
     return eIncompatibleTransport;
   if (transport->listener())
-    return eTransportAlreadyRegistered;
+    return eTransportAlreadyAttached;
   if (transport->Closed())
     return eTransportClosed;
 

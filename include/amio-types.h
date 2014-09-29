@@ -44,6 +44,29 @@ struct AMIO_CLASS ErrorType
 };
 #endif
 
+enum EventFlags : uint32_t
+{
+  Event_Read  = 0x00000001,
+  Event_Write = 0x00000002,
+
+  Events_None = 0x00000000
+};
+static inline EventFlags operator |(const EventFlags &left, const EventFlags &right) {
+  return EventFlags(uint32_t(left) | uint32_t(right));
+}
+static inline EventFlags operator &(const EventFlags &left, const EventFlags &right) {
+  return EventFlags(uint32_t(left) | uint32_t(right));
+}
+static inline EventFlags operator ~(const EventFlags &flags) {
+  return EventFlags(~uint32_t(flags));
+}
+static inline EventFlags & operator |=(EventFlags &left, const EventFlags &right) {
+  return left = left | right;
+}
+static inline EventFlags & operator &=(EventFlags &left, const EventFlags &right) {
+  return left = left & right;
+}
+
 // Represents an I/O error.
 class AMIO_CLASS IOError : public ke::RefcountedThreadsafe<IOError>
 {

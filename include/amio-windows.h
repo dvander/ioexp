@@ -452,7 +452,11 @@ class AMIO_CLASS SocketPoller
    // Registers a socket with the pump. A socket can be registered to at
    // most one pump at any given time. Only sockets created via
    // SocketFactory can be registered.
-   virtual PassRef<IOError> Attach(Ref<Socket> socket, Ref<SocketListener> listener) = 0;
+   virtual PassRef<IOError> Attach(
+     Ref<Socket> socket,
+     Ref<SocketListener> listener,
+     EventFlags eventMask
+   ) = 0;
 
    // Deregisters a socket from a pump. This happens automatically if the
    // socket is closed, a status error or hangup is generated, or a Read()

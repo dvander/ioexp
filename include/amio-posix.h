@@ -123,14 +123,6 @@ class AMIO_CLASS StatusListener : public ke::Refcounted<StatusListener>
   {}
 };
 
-enum EventFlags
-{
-  Event_Read  = 0x00000001,
-  Event_Write = 0x00000002,
-
-  Events_None = 0x00000000
-};
-
 // A poller is responsible for polling for events. It is not thread-safe.
 class AMIO_CLASS Poller
 {

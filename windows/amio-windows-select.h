@@ -25,7 +25,7 @@ class SelectImpl : public WinBaseSocketPoller
   ~SelectImpl();
 
   PassRef<IOError> Poll(int timeoutMs = kNoTimeout) override;
-  PassRef<IOError> Attach(Ref<Socket> socket, Ref<SocketListener> listener) override;
+  PassRef<IOError> Attach(Ref<Socket> socket, Ref<SocketListener> listener, EventFlags eventMask) override;
   void Detach(Ref<Socket> socket) override;
 
   void onReadWouldBlock(WinSocket *socket) override;
@@ -36,8 +36,7 @@ class SelectImpl : public WinBaseSocketPoller
   struct PollData {
     Ref<WinSocket> socket;
     uintptr_t modified;
-    bool watching_reads;
-    bool watching_writes;
+    EventFlags events;
   };
 
   fd_set read_fds_;
