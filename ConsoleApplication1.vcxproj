@@ -88,6 +88,7 @@
     <ClInclude Include="windows\amio-windows-context.h" />
     <ClInclude Include="windows\amio-windows-file.h" />
     <ClInclude Include="windows\amio-windows-iocp.h" />
+    <ClInclude Include="windows\amio-windows-poll.h" />
     <ClInclude Include="windows\amio-windows-select.h" />
     <ClInclude Include="windows\amio-windows-socket.h" />
     <ClInclude Include="windows\amio-windows-transport.h" />
@@ -100,6 +101,7 @@
     <ClCompile Include="windows\amio-windows-errors.cc" />
     <ClCompile Include="windows\amio-windows-file.cc" />
     <ClCompile Include="windows\amio-windows-iocp.cc" />
+    <ClCompile Include="windows\amio-windows-poll.cc" />
     <ClCompile Include="windows\amio-windows-select.cc" />
     <ClCompile Include="windows\amio-windows-socket.cc" />
     <ClCompile Include="windows\amio-windows-transport.cc" />

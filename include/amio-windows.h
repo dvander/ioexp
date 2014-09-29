@@ -471,18 +471,16 @@ class AMIO_CLASS SocketPollerFactory
   static PassRef<IOError> CreatePoller();
 
   // Create a poll() poller. This can only be used with socket-based
-  // transports. maxEventsPerPoll defaults to 64 if left as 0.
-  //
-  // Only available on Windows vista or higher.
+  // transports. Only available on Windows vista or higher.
   //
   // Due to a bug (http://curl.haxx.se/mail/lib-2012-10/0038.html) in WSAPoll,
   // we do not create a WSAPoll-based socket poller by default, even if it is
   // available.
-  static PassRef<IOError> CreateSocketPollImpl(Ref<Poller> *poller, size_t maxEventsPerPoll = 0);
+  static PassRef<IOError> CreateSocketPollImpl(SocketPoller **poller);
 
   // Create a select() poller. This can only be used with socket-based
   // transports.
-  static PassRef<IOError> CreateSocketSelectImpl(Ref<Poller> *poller);
+  static PassRef<IOError> CreateSocketSelectImpl(SocketPoller **poller);
 };
 
 } // namespace amio

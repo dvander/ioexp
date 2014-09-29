@@ -89,9 +89,9 @@ CheckSocketIsStream(SOCKET socket)
   int optlen = sizeof(infoa);
   if (getsockopt(socket, SOL_SOCKET, SO_PROTOCOL_INFOA, (char *)&infoa, &optlen) != 0) {
     if (WSAGetLastError() != WSAEFAULT || optlen != sizeof(infow))
-  	  return new WinError(WSAGetLastError());
+  	  return new WinsockError();
   	if (getsockopt(socket, SOL_SOCKET, SO_PROTOCOL_INFOW, (char *)&infow, &optlen) != 0)
-  	  return new WinError(WSAGetLastError());
+  	  return new WinsockError();
     infoa.iSocketType = infow.iSocketType;
   }
   if (infoa.iSocketType != SOCK_STREAM)
@@ -212,7 +212,7 @@ WinSocket::CreateFrom(Ref<Socket> *outp, SOCKET s, SocketFlags flags)
 {
   u_long mode = 1;
   if (ioctlsocket(s, FIONBIO, &mode) != NO_ERROR)
-    return new WinError(WSAGetLastError());
+    return new WinsockError();
 
   *outp = new WinSocket(s, flags);
   return nullptr;

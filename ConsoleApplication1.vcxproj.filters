@@ -66,6 +66,9 @@
     <ClInclude Include="windows\amio-windows-select.h">
       <Filter>Header Files\windows</Filter>
     </ClInclude>
+    <ClInclude Include="windows\amio-windows-poll.h">
+      <Filter>Header Files\windows</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="shared\amio-errors.cc">
@@ -99,6 +102,9 @@
       <Filter>Source Files\windows</Filter>
     </ClCompile>
     <ClCompile Include="windows\amio-windows-select.cc">
+      <Filter>Source Files\windows</Filter>
+    </ClCompile>
+    <ClCompile Include="windows\amio-windows-poll.cc">
       <Filter>Source Files\windows</Filter>
     </ClCompile>
   </ItemGroup>

@@ -95,24 +95,25 @@ SelectImpl::Poll(int timeoutMs)
 
   int rv = select(0, &read_fds_, &write_fds_, nullptr, timeoutp);
   if (rv == SOCKET_ERROR)
-    return new WinError(WSAGetLastError());
+    return new WinsockError();
   assert(rv >= 0);
 
   generation_++;
-  for (size_t i = 0; i < fds_.length() && rv >= 0; i++) {
-    if (fds_[i].modified == generation_)
-      continue;
-
+  for (size_t i = 0; i < fds_.length() && rv > 0; i++) {
     if ((fds_[i].events & Event_Read) && FD_ISSET(fds_[i].socket->Handle(), &read_fds_)) {
-      fds_[i].events &= ~Event_Read;
-      fds_[i].socket->listener()->OnReadReady(fds_[i].socket);
-      if (fds_[i].modified == generation_)
-        continue;
+      if (fds_[i].modified == generation_) {
+        fds_[i].events &= ~Event_Read;
+        fds_[i].socket->listener()->OnReadReady(fds_[i].socket);
+      }
+      rv--;
     }
 
     if ((fds_[i].events & Event_Write) && FD_ISSET(fds_[i].socket->Handle(), &write_fds_)) {
-      fds_[i].events &= ~Event_Write;
-      fds_[i].socket->listener()->OnWriteReady(fds_[i].socket);
+      if (fds_[i].modified == generation_) {
+        fds_[i].events &= ~Event_Write;
+        fds_[i].socket->listener()->OnWriteReady(fds_[i].socket);
+      }
+      rv--;
     }
   }
 

@@ -36,6 +36,15 @@ class WinError : public IOError
   char *message_;
 };
 
+class WinsockError : public WinError
+{
+ public:
+  WinsockError(DWORD error) : WinError(error)
+  {}
+  WinsockError() : WinError(WSAGetLastError())
+  {}
+};
+
 extern Ref<GenericError> eContextAlreadyAssociated;
 extern Ref<GenericError> eInvalidContext;
 extern Ref<GenericError> eTransportNotAttached;
