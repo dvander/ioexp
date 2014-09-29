@@ -32,13 +32,13 @@ class KqueueImpl : public PosixPoller
 
   PassRef<IOError> Initialize();
   PassRef<IOError> Poll(int timeoutMs) override;
-  PassRef<IOError> Register(Ref<Transport> transport, Ref<StatusListener> listener) override;
-  void Deregister(Ref<Transport> baseTransport) override;
+  PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
+  void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
 
-  void onReadWouldBlock(PosixTransport *transport) override;
+  PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
   PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
-  void unhook(ke::Ref<PosixTransport> transport) override;
+  void unhook(PosixTransport *transport) override;
 
  private:
   bool isEventValid(size_t slot) const {
@@ -50,7 +50,8 @@ class KqueueImpl : public PosixPoller
   struct PollData {
     Ref<PosixTransport> transport;
     size_t modified;
-    bool watching_writes;
+    struct kevent read;
+    struct kevent write;
   };
 
   int kq_;

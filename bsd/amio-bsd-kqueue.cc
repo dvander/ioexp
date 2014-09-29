@@ -7,6 +7,7 @@
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
+#include "shared/amio-errors.h"
 #include "posix/amio-posix-errors.h"
 #include "bsd/amio-bsd-kqueue.h"
 #include <unistd.h>
@@ -48,13 +49,13 @@ KqueueImpl::Initialize()
 }
 
 PassRef<IOError>
-KqueueImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
+KqueueImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, EventFlags eventMask)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport)
     return eIncompatibleTransport;
   if (transport->pump())
-    return eTransportAlreadyRegistered;
+    return eTransportAlreadyAttached;
   if (transport->fd() == -1)
     return eTransportClosed;
 
@@ -69,9 +70,22 @@ KqueueImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
       return eOutOfMemory;
   }
 
-  struct kevent event;
-  EV_SET(&event, transport->fd(), EVFILT_READ, EV_ADD|EV_CLEAR, 0, 0, (void *)slot);
-  if (kevent(kq_, &event, 1, nullptr, 0, nullptr) == -1) {
+  // Pre-fill the two kevent structs beforehand.
+  EV_SET(&listeners_[slot].read, transport->fd(), EVFILT_READ, EV_ADD|EV_CLEAR|EV_DISABLE, 0, 0, (void *)slot);
+  EV_SET(&listeners_[slot].write, transport->fd(), EVFILT_WRITE, EV_ADD|EV_CLEAR|EV_DISABLE, 0, 0, (void *)slot);
+
+  int nevents = 0;
+  struct kevent events[2];
+  if (eventMask & Event_Read) {
+    listeners_[slot].read.flags &= ~EV_DISABLE;
+    events[nevents++] = listeners_[slot].read;
+  }
+  if (eventMask & Event_Write) {
+    listeners_[slot].write.flags &= EV_DISABLE;
+    events[nevents++] = listeners_[slot].write;
+  }
+
+  if (nevents && kevent(kq_, events, nevents, nullptr, 0, nullptr) == -1) {
     Ref<IOError> error = new PosixError();
     free_slots_.append(slot);
     return error;
@@ -80,14 +94,13 @@ KqueueImpl::Register(Ref<Transport> baseTransport, Ref<StatusListener> listener)
   // Hook up the transport.
   listeners_[slot].transport = transport;
   listeners_[slot].modified = generation_;
-  listeners_[slot].watching_writes = false;
   transport->attach(this, listener);
   transport->setUserData(slot);
   return nullptr;
 }
 
 void
-KqueueImpl::Deregister(Ref<Transport> baseTransport)
+KqueueImpl::Detach(Ref<Transport> baseTransport)
 {
   Ref<PosixTransport> transport(baseTransport->toPosixTransport());
   if (!transport || transport->pump() != this || transport->fd() == -1)
@@ -102,8 +115,8 @@ KqueueImpl::Poll(int timeoutMs)
   struct timespec timeout;
   struct timespec *timeoutp = nullptr;
   if (timeoutMs >= 0) {
-    timeout.tv_sec = 0;
-    timeout.tv_nsec = timeoutMs * 1000000;
+    timeout.tv_sec = timeoutMs / 1000;
+    timeout.tv_nsec = (timeoutMs % 1000) * 1000000;
     timeoutp = &timeout;
   }
 
@@ -152,30 +165,36 @@ KqueueImpl::Interrupt()
   abort();
 }
 
-void
+PassRef<IOError>
 KqueueImpl::onReadWouldBlock(PosixTransport *transport)
 {
-  // Do nothing... kqueue is edge-triggered.
+  size_t slot = transport->getUserData();
+  if (listeners_[slot].read.flags & EV_DISABLE) {
+    listeners_[slot].read.flags &= ~EV_DISABLE;
+    if (kevent(kq_, &listeners_[slot].read, 1, nullptr, 0, nullptr) == -1) {
+      listeners_[slot].read.flags |= EV_DISABLE;
+      return new PosixError();
+    }
+  }
+  return nullptr;
 }
 
 PassRef<IOError>
 KqueueImpl::onWriteWouldBlock(PosixTransport *transport)
 {
-  // By default we don't listen to writes until a write is requested.
   size_t slot = transport->getUserData();
-  if (!listeners_[slot].watching_writes) {
-    struct kevent event;
-    EV_SET(&event, transport->fd(), EVFILT_WRITE, EV_ADD|EV_CLEAR, 0, 0, (void *)slot);
-    if (kevent(kq_, &event, 1, nullptr, 0, nullptr) == -1)
+  if (listeners_[slot].write.flags & EV_DISABLE) {
+    listeners_[slot].write.flags &= ~EV_DISABLE;
+    if (kevent(kq_, &listeners_[slot].write, 1, nullptr, 0, nullptr) == -1) {
+      listeners_[slot].write.flags |= EV_DISABLE;
       return new PosixError();
-    listeners_[slot].watching_writes = true;
+    }
   }
-
   return nullptr;
 }
 
 void
-KqueueImpl::unhook(Ref<PosixTransport> transport)
+KqueueImpl::unhook(PosixTransport *transport)
 {
   assert(transport->pump() == this);
 
@@ -184,17 +203,22 @@ KqueueImpl::unhook(Ref<PosixTransport> transport)
   assert(fd != -1);
   assert(listeners_[slot].transport == transport);
 
-  size_t nevents = 1;
+  int nevents = 0;
   struct kevent events[2];
-  EV_SET(&events[0], transport->fd(), EVFILT_READ, EV_DELETE, 0, 0, (void *)slot);
-  if (listeners_[slot].watching_writes) {
-    EV_SET(&events[1], transport->fd(), EVFILT_WRITE, EV_DELETE, 0, 0, (void *)slot);
-    nevents++;
+  if (!(listeners_[slot].read.flags & EV_DISABLE)) {
+    listeners_[slot].read.flags = EV_DELETE;
+    events[nevents++] = listeners_[slot].read;
+  }
+  if (!(listeners_[slot].write.flags & EV_DISABLE)) {
+    listeners_[slot].write.flags = EV_DELETE;
+    events[nevents++] = listeners_[slot].write;
   }
   kevent(kq_, events, nevents, nullptr, 0, nullptr);
 
+  // Detach here, just for safety - in case null below frees it.
+  transport->detach();
+
   listeners_[slot].transport = nullptr;
   listeners_[slot].modified = generation_;
-  transport->detach();
   free_slots_.append(slot);
 }

@@ -86,8 +86,8 @@ SelectImpl::Poll(int timeoutMs)
   struct timeval timeout;
   struct timeval *timeoutp = nullptr;
   if (timeoutMs >= 0) {
-    timeout.tv_sec = 0;
-    timeout.tv_usec = timeoutMs * 1000;
+    timeout.tv_sec = timeoutMs / 1000;
+    timeout.tv_usec = (timeoutMs % 1000) * 1000;
     timeoutp = &timeout;
   }
 
