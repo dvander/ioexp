@@ -36,11 +36,8 @@ def Configure(binary):
       'posix/amio-posix-errors.cc',
       'posix/amio-posix-transport.cc',
       'posix/amio-posix-select.cc',
+      'posix/amio-posix-poll.cc', 
     ]
-    if builder.target_platform != 'solaris':
-      binary.sources += [
-        'posix/amio-posix-poll.cc', 
-      ]
     binary.compiler.cflags += ['-fPIC']
 
   if builder.target_platform == 'linux':

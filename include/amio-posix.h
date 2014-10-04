@@ -174,7 +174,7 @@ class AMIO_CLASS Poller
 # define AMIO_BSD
 #endif
 
-#if defined(__linux__) || defined(AMIO_BSD)
+#if defined(__linux__) || defined(AMIO_BSD) || defined(__sun__)
 # define AMIO_POLL_AVAILABLE
 #endif
 
