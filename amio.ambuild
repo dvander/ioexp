@@ -36,8 +36,11 @@ def Configure(binary):
       'posix/amio-posix-errors.cc',
       'posix/amio-posix-transport.cc',
       'posix/amio-posix-select.cc',
-      'posix/amio-posix-poll.cc',
     ]
+    if builder.target_platform != 'solaris':
+      binary.sources += [
+        'posix/amio-posix-poll.cc', 
+      ]
     binary.compiler.cflags += ['-fPIC']
 
   if builder.target_platform == 'linux':
@@ -50,12 +53,15 @@ def Configure(binary):
       'bsd/amio-bsd.cc',
       'bsd/amio-bsd-kqueue.cc',
     ]
-  elif builder.target_platform == 'solaris':
+  elif builder.target_platform == 'windows':
     binary.sources += [
       'windows/amio-windows-context.cc',
       'windows/amio-windows-errors.cc',
       'windows/amio-windows-transport.cc',
       'windows/amio-windows-utils.cc',
+    ]
+  elif builder.target_platform == 'solaris':
+    binary.sources += [
     ]
   return binary
 
