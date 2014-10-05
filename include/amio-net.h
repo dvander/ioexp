@@ -20,7 +20,7 @@
 # include <netinet/in.h>
 # if defined(KE_LINUX)
 #  include <linux/un.h>
-# elif defined(KE_SOLARIS)
+# elif defined(KE_SOLARIS) || defined(KE_NETBSD)
 #  include <sys/un.h>
 # endif
 #endif
