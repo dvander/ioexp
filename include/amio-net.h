@@ -22,7 +22,8 @@
 #  include <linux/un.h>
 # elif defined(KE_SOLARIS) || \
        defined(KE_NETBSD) || \
-       defined(KE_OPENBSD)
+       defined(KE_OPENBSD) || \
+       defined(KE_FREEBSD)
 #  include <sys/un.h>
 # endif
 #endif
