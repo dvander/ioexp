@@ -1,0 +1,41 @@
+# vim: set sts=2 ts=8 sw=2 tw=99 et ft=python: 
+# 
+# Copyright (C) 2004-2014 David Anderson
+# 
+# This file is part of AMIO.
+# 
+# AMIO is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation, either version 3 of the License, or (at your option)
+# any later version.
+# 
+# AMIO is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License along with
+# AMIO. If not, see http://www.gnu.org/licenses/.
+#
+import os
+
+runner = builder.compiler.Program('testrunner')
+
+if builder.target_platform == 'windows':
+  runner.compiler.linkflags += ['/SUBSYSTEM:CONSOLE']
+runner.compiler.linkflags += [KE.static_lib.binary]
+
+runner.sources += [
+  'main.cc',
+]
+
+if builder.target_platform != 'windows':
+  runner.sources += [
+    'posix/test-pipes.cc',
+  ]
+
+if builder.target_platform == 'linux':
+  runner.sources += [
+    'test-linux.cc',
+  ]
+
+builder.Add(runner)

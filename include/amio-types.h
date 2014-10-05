@@ -17,9 +17,9 @@
 namespace amio {
 
 #if defined(AMIO_IMPORT)
-# define AMIO_CLASS KE_CLASS_IMPORT
+# define AMIO_CLASS KE_IMPORT
 #elif defined(AMIO_EXPORT)
-# define AMIO_CLASS KE_CLASS_EXPORT
+# define AMIO_CLASS KE_EXPORT
 #else
 # define AMIO_CLASS
 #endif
@@ -55,7 +55,7 @@ static inline EventFlags operator |(const EventFlags &left, const EventFlags &ri
   return EventFlags(uint32_t(left) | uint32_t(right));
 }
 static inline EventFlags operator &(const EventFlags &left, const EventFlags &right) {
-  return EventFlags(uint32_t(left) | uint32_t(right));
+  return EventFlags(uint32_t(left) & uint32_t(right));
 }
 static inline EventFlags operator ~(const EventFlags &flags) {
   return EventFlags(~uint32_t(flags));

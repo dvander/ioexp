@@ -24,6 +24,10 @@ def Normalize(path):
 
 class KEConfig:
   def __init__(self):
+    self.static_lib = None
+    self.dynamic_lib = None
+
+  def setup(self):
     cfg = builder.DetectCompilers()
     cxx = cfg.cxx
 
@@ -145,16 +149,18 @@ class KEConfig:
 
     cfg.defines += ['KE_THREADSAFE']
 
-    if builder.options.amtl:
-      amtl_path = Normalize(builder.options.amtl)
-      if not os.path.isdir(amtl_path):
-          raise Exception('Could not find AMTL at: {0}'.format(amtl_path))
-      cfg.cxxincludes += [os.path.join(amtl_path, 'include')]
+    if not builder.options.amtl:
+      raise Exception('Must specify AMTL path via --amtl')
+    amtl_path = Normalize(builder.options.amtl)
+    if not os.path.isdir(amtl_path):
+      raise Exception('Could not find AMTL at: {0}'.format(amtl_path))
+    cfg.cxxincludes += [os.path.join(amtl_path, 'include')]
     cfg.cxxincludes += [
       os.path.join(builder.sourcePath, 'include'),
     ]
 
 KE = KEConfig()
+KE.setup()
 
-builder.RunScript('static_lib.ambuild', { 'KE': KE })
-
+builder.RunScript('amio.ambuild', { 'KE': KE })
+builder.RunScript('tests/AMBuild.tests', { 'KE': KE })

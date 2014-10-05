@@ -1,0 +1,72 @@
+# vim: set sts=2 ts=8 sw=2 tw=99 et ft=python: 
+# 
+# Copyright (C) 2004-2014 David Anderson
+# 
+# This file is part of AMIO.
+# 
+# AMIO is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation, either version 3 of the License, or (at your option)
+# any later version.
+# 
+# AMIO is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License along with
+# AMIO. If not, see http://www.gnu.org/licenses/.
+#
+import os
+
+### CLI
+def Configure(binary):
+  binary.compiler.cxxincludes += [
+    os.path.join(builder.sourcePath),
+    os.path.join(builder.sourcePath, 'include'),
+  ]
+  
+  binary.sources += [
+    'shared/amio-errors.cc',
+    'shared/amio-string.cc',
+  ]
+
+  if builder.target_platform != 'windows':
+    binary.sources += [
+      'posix/amio-posix.cc',
+      'posix/amio-posix-errors.cc',
+      'posix/amio-posix-transport.cc',
+      'posix/amio-posix-select.cc',
+      'posix/amio-posix-poll.cc',
+    ]
+    binary.compiler.cflags += ['-fPIC']
+
+  if builder.target_platform == 'linux':
+    binary.sources += [
+            'main.cpp',
+      'linux/amio-linux.cc',
+      'linux/amio-linux-epoll.cc',
+    ]
+  elif builder.target_platform == 'mac':
+    binary.sources += [
+      'bsd/amio-bsd.cc',
+      'bsd/amio-bsd-kqueue.cc',
+    ]
+  elif builder.target_platform == 'solaris':
+    binary.sources += [
+      'windows/amio-windows-context.cc',
+      'windows/amio-windows-errors.cc',
+      'windows/amio-windows-transport.cc',
+      'windows/amio-windows-utils.cc',
+    ]
+  return binary
+
+static_lib = builder.compiler.StaticLibrary('amio.a')
+static_lib = Configure(static_lib)
+KE.static_lib = builder.Add(static_lib)
+
+dynamic_lib = builder.compiler.Library('libamio')
+dynamic_lib.compiler.defines += [
+  'AMIO_EXPORT',
+]
+dynamic_lib = Configure(dynamic_lib)
+KE.dynamic_lib = builder.Add(dynamic_lib)

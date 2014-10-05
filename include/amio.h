@@ -12,4 +12,10 @@
 
 #include <amio-types.h>
 
+#if defined(_WIN32)
+# include <amio-windows.h>
+#else
+# include <amio-posix.h>
+#endif
+
 #endif // _include_amio_header_h_

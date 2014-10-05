@@ -150,7 +150,7 @@ PollImpl::Poll(int timeoutMs)
     // Prioritize POLLIN over POLLHUP/POLLRDHUP.
     if (revents & POLLIN) {
       // Remove the flag to simulate edge-triggering.
-      poll_events_[fd].events &= ~POLLIN;
+      poll_events_[i].events &= ~POLLIN;
 
       fds_[fd].transport->listener()->OnReadReady(fds_[fd].transport);
       if (!isEventValid(fd))
@@ -175,7 +175,7 @@ PollImpl::Poll(int timeoutMs)
     // Handle output.
     if (revents & POLLOUT) {
       // Remove the flag to simulate edge-triggering.
-      poll_events_[fd].events &= ~POLLOUT;
+      poll_events_[i].events &= ~POLLOUT;
 
       // This is the last event we handle, so we don't need any re-entrancy
       // checks.

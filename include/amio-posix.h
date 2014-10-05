@@ -57,7 +57,7 @@ class AMIO_CLASS Transport : public ke::Refcounted<Transport>
   // 
   // If an error occurs, |Error| will be set in |result|, and the result will
   // be false.
-  virtual bool Read(IOResult *result, uint8_t *buffer, size_t maxlength) = 0;
+  virtual bool Read(IOResult *result, void *buffer, size_t maxlength) = 0;
 
   // Attempts to write a number of bytes to the transport. If the transport
   // is connectionless (such as a datagram socket), all bytes are guaranteed
@@ -71,7 +71,7 @@ class AMIO_CLASS Transport : public ke::Refcounted<Transport>
   //
   // If an error occurs, |Error| will be set in |result|, and the result will
   // be false.
-  virtual bool Write(IOResult *result, const uint8_t *buffer, size_t maxlength) = 0;
+  virtual bool Write(IOResult *result, const void *buffer, size_t maxlength) = 0;
 
   // Closes the transport, and frees any underlying operating system resources.
   // This does not free the C++ Transport object itself, which happens when
@@ -92,7 +92,7 @@ class AMIO_CLASS Transport : public ke::Refcounted<Transport>
 };
 
 // Used to receive notifications about status changes.
-class AMIO_CLASS StatusListener : public ke::Refcounted<StatusListener>
+class AMIO_CLASS StatusListener : public ke::VirtualRefcounted
 {
  public:
   virtual ~StatusListener()
@@ -220,6 +220,18 @@ class AMIO_CLASS TransportFactory
 
   // Create a transport for a unix pipe (via the pipe() call).
   static PassRef<IOError> CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp);
+};
+
+// This class can be used to automatically disable SIGPIPE. By default, Poll()
+// will not disable SIGPIPE.
+class AutoDisableSigpipe
+{
+ public:
+  AutoDisableSigpipe();
+  ~AutoDisableSigpipe();
+
+ private:
+  void (*prev_handler_)(int);
 };
 
 } // namespace amio

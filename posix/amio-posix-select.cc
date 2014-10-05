@@ -99,7 +99,7 @@ SelectImpl::Poll(int timeoutMs)
     return new PosixError();
 
   generation_++;
-  for (size_t i = 0; i < max_fds_; i++) {
+  for (size_t i = 0; i <= fd_watermark_; i++) {
     // Make sure this transport wasn't swapped out or removed.
     if (!isEventValid(i))
       continue;

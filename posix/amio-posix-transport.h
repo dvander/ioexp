@@ -13,7 +13,7 @@
 #include "include/amio.h"
 #include "include/amio-posix.h"
 
-#if defined(WIN32)
+#if defined(_WIN32)
 # error PosixTransport cannot be used on Windows.
 #endif
 
@@ -30,8 +30,8 @@ class PosixTransport : public Transport
   ~PosixTransport();
 
   // Transport implementation.
-  bool Read(IOResult *result, uint8_t *buffer, size_t maxlength) override;
-  bool Write(IOResult *result, const uint8_t *buffer, size_t maxlength) override;
+  bool Read(IOResult *result, void *buffer, size_t maxlength) override;
+  bool Write(IOResult *result, const void *buffer, size_t maxlength) override;
   void Close() override;
 
   PosixTransport *toPosixTransport() override {

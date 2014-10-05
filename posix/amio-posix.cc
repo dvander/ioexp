@@ -16,6 +16,7 @@
 #endif
 #include <unistd.h>
 #include <fcntl.h>
+#include <signal.h>
 
 using namespace ke;
 using namespace amio;
@@ -83,3 +84,13 @@ PollerFactory::CreatePollImpl(Poller **outp)
   return nullptr;
 }
 #endif
+
+AutoDisableSigpipe::AutoDisableSigpipe()
+{
+  prev_handler_ = signal(SIGPIPE, SIG_IGN);
+}
+
+AutoDisableSigpipe::~AutoDisableSigpipe()
+{
+  signal(SIGPIPE, prev_handler_);
+}

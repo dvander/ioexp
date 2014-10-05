@@ -46,7 +46,7 @@ PosixTransport::Close()
 }
 
 bool
-PosixTransport::Read(IOResult *result, uint8_t *buffer, size_t maxlength)
+PosixTransport::Read(IOResult *result, void *buffer, size_t maxlength)
 {
   *result = IOResult();
 
@@ -74,7 +74,7 @@ PosixTransport::Read(IOResult *result, uint8_t *buffer, size_t maxlength)
 }
 
 bool
-PosixTransport::Write(IOResult *result, const uint8_t *buffer, size_t maxlength)
+PosixTransport::Write(IOResult *result, const void *buffer, size_t maxlength)
 {
   *result = IOResult();
 
