@@ -167,10 +167,14 @@ class AMIO_CLASS Poller
    virtual void Detach(Ref<Transport> transport) = 0;
 };
 
-#if defined(__linux__) || \
-    defined(__APPLE__) || \
+#if defined(__APPLE__) || \
     defined(__FreeBSD__) || \
-    defined(__MACH__)
+    defined(__MACH__) || \
+    defined(__OpenBSD__)
+# define AMIO_BSD
+#endif
+
+#if defined(__linux__) || defined(AMIO_BSD)
 # define AMIO_POLL_AVAILABLE
 #endif
 
@@ -196,7 +200,7 @@ class AMIO_CLASS PollerFactory
   // Create a message pump based on epoll(). By default maxEventsPerPoll is 
   // 256, when used through CreatePoller(). Use 0 for the default.
   static PassRef<IOError> CreateEpollImpl(Poller **outp, size_t maxEventsPerPoll = 0);
-#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__MACH__)
+#elif defined(AMIO_BSD)
   // Create a message pump based on kqueue(). By default maxEventsPerPoll is
   // 256, when used through CreatePoller(). Use 0 for the default.
   static PassRef<IOError> CreateKqueueImpl(Poller **outp, size_t maxEventsPerPoll = 0);

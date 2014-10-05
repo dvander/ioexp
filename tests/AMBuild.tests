@@ -37,7 +37,7 @@ if builder.target_platform == 'linux':
   runner.sources += [
     'test-linux.cc',
   ]
-elif builder.target_platform in ['mac', 'freebsd']:
+elif builder.target_platform in ['mac', 'freebsd', 'openbsd']:
   runner.sources += [
     'test-bsd.cc',
   ]

@@ -28,7 +28,7 @@ using namespace ke;
 
 // Types of errors that can occur.
 #if defined(KE_CXX11)
-enum class AMIO_CLASS ErrorType
+enum class ErrorType
 {
   System,       // System error (code included).
   Library,      // Library (AMIO) error.

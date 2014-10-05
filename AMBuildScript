@@ -36,6 +36,8 @@ class KEConfig:
         cfg.cflags += ['-Doverride=']
       if cxx.version < '4.6':
         cfg.defines += ['nullptr=NULL']
+      if cxx.version < '4.4': 
+        raise Exception('gcc version must be 4.4 or higher')
 
     if cxx.behavior is 'gcc':
       cfg.cflags += [
@@ -44,8 +46,11 @@ class KEConfig:
         '-Werror',
         '-Wno-switch',
       ]
-      if cxx.name == 'gcc' and cxx.version < '4.7':
-        cfg.cxxflags += ['-std=c++0x']
+      if cxx.name == 'gcc':
+        if cxx.version >= '4.7':
+          cfg.cxxflags += ['-std=c++11']
+        elif cxx.version >= '4.3':
+          cfg.cxxflags += ['-std=c++0x']
       else:
         cfg.cxxflags += ['-std=c++11']
 
