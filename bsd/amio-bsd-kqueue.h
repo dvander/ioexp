@@ -13,8 +13,8 @@
 #include "include/amio.h"
 #include "include/amio-posix.h"
 #include "posix/amio-posix-base-poller.h"
-#include <sys/event.h>
 #include <sys/types.h>
+#include <sys/event.h>
 #include <am-utility.h>
 #include <am-vector.h>
 
