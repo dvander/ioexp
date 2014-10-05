@@ -13,9 +13,16 @@
 using namespace ke;
 using namespace amio;
 
+static PassRef<IOError>
+create_devpoll(Poller **outp)
+{
+  return PollerFactory::CreateDevPollImpl(outp);
+}
+
 void
 ke::SetupTests()
 {
   Tests.append(new TestPipes(PollerFactory::CreateSelectImpl, "select-pipe"));
   Tests.append(new TestPipes(PollerFactory::CreatePollImpl, "select-pipe"));
+  Tests.append(new TestPipes(create_devpoll, "/dev/poll-pipe"));
 }

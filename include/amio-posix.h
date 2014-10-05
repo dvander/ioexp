@@ -204,6 +204,10 @@ class AMIO_CLASS PollerFactory
   // Create a message pump based on kqueue(). By default maxEventsPerPoll is
   // 256, when used through CreatePoller(). Use 0 for the default.
   static PassRef<IOError> CreateKqueueImpl(Poller **outp, size_t maxEventsPerPoll = 0);
+#elif defined(__sun__)
+  // Create a message pump based on /dev/poll. By default maxEventsPerPoll is
+  // 256, when used through CreatePoller(). Use 0 for the default.
+  static PassRef<IOError> CreateDevPollImpl(Poller **outp, size_t maxEventsPerPoll = 0);
 #endif
 };
 
