@@ -81,7 +81,7 @@ KqueueImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, E
     events[nevents++] = listeners_[slot].read;
   }
   if (eventMask & Event_Write) {
-    listeners_[slot].write.flags &= EV_DISABLE;
+    listeners_[slot].write.flags &= ~EV_DISABLE;
     events[nevents++] = listeners_[slot].write;
   }
 
