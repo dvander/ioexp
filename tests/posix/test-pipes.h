@@ -20,7 +20,7 @@ class TestPipes
    public virtual Test
 {
  public:
-  TestPipes(CreatePoller_t ctor, const char *name, bool uses_select);
+  TestPipes(CreatePoller_t ctor, const char *name);
 
   bool Run() override;
   void AddRef() override {
@@ -67,7 +67,6 @@ class TestPipes
   bool got_write_;
   Ref<IOError> got_error_;
   bool got_hangup_;
-  bool uses_select_;
 };
 
 }

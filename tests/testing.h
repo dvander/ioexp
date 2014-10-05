@@ -89,7 +89,7 @@ check_error(Ref<IOError> error, const char *fmt, ...)
   vfprintf(fp, fmt, ap);
   va_end(ap);
   if (error)
-    fprintf(fp, "(%s)\n", error->Message());
+    fprintf(fp, " (%s)\n", error->Message());
   else
     fprintf(fp, "\n");
   return !error;

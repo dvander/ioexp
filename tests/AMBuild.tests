@@ -37,5 +37,9 @@ if builder.target_platform == 'linux':
   runner.sources += [
     'test-linux.cc',
   ]
+if builder.target_platform == 'mac':
+  runner.sources += [
+    'test-bsd.cc',
+  ]
 
 builder.Add(runner)

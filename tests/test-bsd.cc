@@ -14,15 +14,15 @@ using namespace ke;
 using namespace amio;
 
 static PassRef<IOError>
-create_epoll(Poller **outp)
+create_kqueue(Poller **outp)
 {
-  return PollerFactory::CreateEpollImpl(outp);
+  return PollerFactory::CreateKqueueImpl(outp);
 }
 
 void
 ke::SetupTests()
 {
   Tests.append(new TestPipes(PollerFactory::CreateSelectImpl, "select-pipe"));
-  Tests.append(new TestPipes(PollerFactory::CreatePollImpl, "poll-pipe));
-  Tests.append(new TestPipes(create_epoll, "epoll-pipe"));
+  Tests.append(new TestPipes(PollerFactory::CreatePollImpl, "poll-pipe"));
+  Tests.append(new TestPipes(create_kqueue, "epoll-pipe"));
 }
