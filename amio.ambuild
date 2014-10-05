@@ -45,7 +45,7 @@ def Configure(binary):
       'linux/amio-linux.cc',
       'linux/amio-linux-epoll.cc',
     ]
-  elif builder.target_platform in ['mac', 'freebsd', 'openbsd']:
+  elif builder.target_platform in ['mac', 'freebsd', 'openbsd', 'netbsd']:
     binary.sources += [
       'bsd/amio-bsd.cc',
       'bsd/amio-bsd-kqueue.cc',

@@ -170,7 +170,8 @@ class AMIO_CLASS Poller
 #if defined(__APPLE__) || \
     defined(__FreeBSD__) || \
     defined(__MACH__) || \
-    defined(__OpenBSD__)
+    defined(__OpenBSD__) || \
+    defined(__NetBSD__)
 # define AMIO_BSD
 #endif
 

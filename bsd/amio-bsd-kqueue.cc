@@ -11,9 +11,16 @@
 #include "posix/amio-posix-errors.h"
 #include "bsd/amio-bsd-kqueue.h"
 #include <unistd.h>
+#include <sys/time.h>
 
 using namespace ke;
 using namespace amio;
+
+#if defined(__NetBSD__)
+typedef intptr_t kev_userdata_t;
+#else
+typedef void* kev_userdata_t;
+#endif
 
 KqueueImpl::KqueueImpl(size_t maxEvents)
  : kq_(-1),
@@ -71,8 +78,8 @@ KqueueImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, E
   }
 
   // Pre-fill the two kevent structs beforehand.
-  EV_SET(&listeners_[slot].read, transport->fd(), EVFILT_READ, EV_ADD|EV_CLEAR|EV_DISABLE, 0, 0, (void *)slot);
-  EV_SET(&listeners_[slot].write, transport->fd(), EVFILT_WRITE, EV_ADD|EV_CLEAR|EV_DISABLE, 0, 0, (void *)slot);
+  EV_SET(&listeners_[slot].read, transport->fd(), EVFILT_READ, EV_ADD|EV_CLEAR|EV_DISABLE, 0, 0, kev_userdata_t(slot));
+  EV_SET(&listeners_[slot].write, transport->fd(), EVFILT_WRITE, EV_ADD|EV_CLEAR|EV_DISABLE, 0, 0, kev_userdata_t(slot));
 
   int nevents = 0;
   struct kevent events[2];
