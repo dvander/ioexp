@@ -23,6 +23,6 @@ void
 ke::SetupTests()
 {
   Tests.append(new TestPipes(PollerFactory::CreateSelectImpl, "select-pipe"));
-  Tests.append(new TestPipes(PollerFactory::CreatePollImpl, "poll-pipe));
+  Tests.append(new TestPipes(PollerFactory::CreatePollImpl, "poll-pipe"));
   Tests.append(new TestPipes(create_epoll, "epoll-pipe"));
 }
