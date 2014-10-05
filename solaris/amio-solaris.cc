@@ -10,8 +10,8 @@
 #include "include/amio.h"
 #include "posix/amio-posix-transport.h"
 #include "posix/amio-posix-errors.h"
-#include "solaris/amio-solaris.h"
 #include "solaris/amio-solaris-devpoll.h"
+#include "solaris/amio-solaris-port.h"
 #include <string.h>
 #include <stdlib.h>
 #include <sys/utsname.h>
@@ -23,6 +23,17 @@ PassRef<IOError>
 PollerFactory::CreateDevPollImpl(Poller **outp, size_t maxEventsPerPoll)
 {
   AutoPtr<DevPollImpl> poller(new DevPollImpl());
+  Ref<IOError> error = poller->Initialize(maxEventsPerPoll);
+  if (error)
+    return error;
+  *outp = poller.take();
+  return nullptr;
+}
+
+PassRef<IOError>
+PollerFactory::CreateCompletionPort(Poller **outp, size_t maxEventsPerPoll)
+{
+  AutoPtr<PortImpl> poller(new PortImpl());
   Ref<IOError> error = poller->Initialize(maxEventsPerPoll);
   if (error)
     return error;

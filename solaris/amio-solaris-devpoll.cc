@@ -8,7 +8,6 @@
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
 #include "posix/amio-posix-errors.h"
-#include "solaris/amio-solaris.h"
 #include "solaris/amio-solaris-devpoll.h"
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -196,11 +195,11 @@ DevPollImpl::addEventFlag(int fd, int flag)
 
   struct pollfd tmp = fds_[fd].pe;
   tmp.events = POLLREMOVE;
-  if ((error = WriteDevPoll(dp_, &tmp)) == nullptr)
+  if ((error = WriteDevPoll(dp_, &tmp)) != nullptr)
     return error;
 
   fds_[fd].pe.events |= flag;
-  if ((error = WriteDevPoll(dp_, &fds_[fd].pe)) == nullptr) {
+  if ((error = WriteDevPoll(dp_, &fds_[fd].pe)) != nullptr) {
     fds_[fd].pe.events &= ~flag;
     return error;
   }

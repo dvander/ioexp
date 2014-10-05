@@ -179,6 +179,10 @@ class AMIO_CLASS Poller
 # define AMIO_POLL_AVAILABLE
 #endif
 
+#if defined(__sun__)
+class CompletionPort;
+#endif
+
 // Creates message pumps.
 class AMIO_CLASS PollerFactory
 {
@@ -200,15 +204,39 @@ class AMIO_CLASS PollerFactory
 #if defined(__linux__)
   // Create a message pump based on epoll(). By default maxEventsPerPoll is 
   // 256, when used through CreatePoller(). Use 0 for the default.
+  //
+  // epoll() is chosen by CreatePoller by default for Linux 2.5.44+, as it is
+  // considered the most efficient polling mechanism and has native edge-
+  // triggering.
   static PassRef<IOError> CreateEpollImpl(Poller **outp, size_t maxEventsPerPoll = 0);
 #elif defined(AMIO_BSD)
   // Create a message pump based on kqueue(). By default maxEventsPerPoll is
   // 256, when used through CreatePoller(). Use 0 for the default.
+  //
+  // kqueue() is chosen by CreatePoller by default for BSD (as it is
+  // considered the most efficient polling mechanism and has native edge-
+  // triggering). It is assumed to exist by default on Darwin, FreeBSD, and
+  // OpenBSD.
   static PassRef<IOError> CreateKqueueImpl(Poller **outp, size_t maxEventsPerPoll = 0);
 #elif defined(__sun__)
   // Create a message pump based on /dev/poll. By default maxEventsPerPoll is
-  // 256, when used through CreatePoller(). Use 0 for the default.
+  // 256. Use 0 for the default. CreatePoller() never chooses /dev/poll.
   static PassRef<IOError> CreateDevPollImpl(Poller **outp, size_t maxEventsPerPoll = 0);
+
+  // Create a message pump based on IO Completion Ports. By default
+  // maxEventsPerPoll is 256, when used through CreatePoller(). Use 0 for the
+  // default.
+  //
+  // Unlike Windows IOCP, Solaris allows normal poll()-like notifications
+  // through the port, which can simulate edge-triggering natively. AMIO will
+  // choose completion ports by default for Solaris.
+  //
+  // Although Solaris offers Windows-like async I/O through its AIO interface,
+  // this is not yet supported (AIO is geared toward direct access to block
+  // devices, AMIO is intended for IPC and sockets). Additionally, since it
+  // would (probably) require transport-level locking, this poller is not
+  // thread-safe even though the underlying port is.
+  static PassRef<IOError> CreateCompletionPort(Poller **outp, size_t maxEventsPoll = 0);
 #endif
 };
 

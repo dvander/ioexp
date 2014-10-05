@@ -19,10 +19,17 @@ create_devpoll(Poller **outp)
   return PollerFactory::CreateDevPollImpl(outp);
 }
 
+static PassRef<IOError>
+create_port(Poller **outp)
+{
+  return PollerFactory::CreateCompletionPort(outp);
+}
+
 void
 ke::SetupTests()
 {
   Tests.append(new TestPipes(PollerFactory::CreateSelectImpl, "select-pipe"));
-  Tests.append(new TestPipes(PollerFactory::CreatePollImpl, "select-pipe"));
+  Tests.append(new TestPipes(PollerFactory::CreatePollImpl, "poll-pipe"));
   Tests.append(new TestPipes(create_devpoll, "/dev/poll-pipe"));
+  Tests.append(new TestPipes(create_port, "ioport-pipe"));
 }
