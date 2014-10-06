@@ -27,7 +27,7 @@ static Ref<GenericError> sInvalidIPv4Length = new GenericError("ipv4 address has
 static Ref<GenericError> sInvalidIPv6Length = new GenericError("ipv6 address has invalid length");
 static Ref<GenericError> sUnknownResolutionError = new GenericError("unknown error resolving address");
 
-static inline PassRef<IOError>
+inline PassRef<IOError>
 NetworkError()
 {
 #if defined(KE_WINDOWS)

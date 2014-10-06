@@ -18,14 +18,7 @@
 # include <string.h>
 # include <sys/socket.h>
 # include <netinet/in.h>
-# if defined(KE_LINUX)
-#  include <linux/un.h>
-# elif defined(KE_SOLARIS) || \
-       defined(KE_NETBSD) || \
-       defined(KE_OPENBSD) || \
-       defined(KE_FREEBSD)
-#  include <sys/un.h>
-# endif
+# include <sys/un.h>
 #endif
 
 namespace amio {
