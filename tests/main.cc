@@ -24,6 +24,8 @@ int main(int argc, char **argv)
 #endif
 
   SetupTests();
+  SetupNetworkTests();
+
   for (size_t i = 0; i < Tests.length(); i++) {
     Ref<Test> test = Tests[i];
     if (argc >= 2 && strcmp(argv[1], test->name()) != 0)

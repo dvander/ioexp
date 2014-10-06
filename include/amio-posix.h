@@ -10,13 +10,15 @@
 #ifndef _include_amio_posix_header_h_
 #define _include_amio_posix_header_h_
 
+#include <am-platform.h>
+
 namespace amio {
 
 // Forward declarations for internal types.
 class PosixTransport;
 
 // The result of an IO operation.
-struct AMIO_CLASS IOResult
+struct AMIO_LINK IOResult
 {
   // Set if there was an error.
   ke::Ref<IOError> Error;
@@ -40,7 +42,7 @@ struct AMIO_CLASS IOResult
 
 // Describes a low-level transport mechanism used in Posix. This is essentially
 // a wrapper around a file descriptor.
-class AMIO_CLASS Transport : public ke::Refcounted<Transport>
+class AMIO_LINK Transport : public ke::Refcounted<Transport>
 {
  public:
   virtual ~Transport()
@@ -92,7 +94,7 @@ class AMIO_CLASS Transport : public ke::Refcounted<Transport>
 };
 
 // Used to receive notifications about status changes.
-class AMIO_CLASS StatusListener : public ke::VirtualRefcounted
+class AMIO_LINK StatusListener : public ke::VirtualRefcounted
 {
  public:
   virtual ~StatusListener()
@@ -123,8 +125,19 @@ class AMIO_CLASS StatusListener : public ke::VirtualRefcounted
   {}
 };
 
+// A IPollable is an object which can be polled. It is a pair of a transport
+// and listener. It is a helper for higher-level layers which require using
+// specific listeners.
+class IPollable
+{
+ public:
+  virtual PassRef<Transport> Transport() = 0;
+  virtual PassRef<StatusListener> Listener() = 0;
+  virtual EventFlags Events() = 0;
+};
+
 // A poller is responsible for polling for events. It is not thread-safe.
-class AMIO_CLASS Poller
+class AMIO_LINK Poller
 {
  public:
    virtual ~Poller()
@@ -165,26 +178,23 @@ class AMIO_CLASS Poller
    // operation returns Ended. It is safe to deregister a transport multiple
    // times.
    virtual void Detach(Ref<Transport> transport) = 0;
+
+   // Helper for IPollables.
+   PassRef<IOError> Attach(IPollable *pollable) {
+     return Attach(pollable->Transport(), pollable->Listener(), pollable->Events());
+   }
 };
 
-#if defined(__APPLE__) || \
-    defined(__FreeBSD__) || \
-    defined(__MACH__) || \
-    defined(__OpenBSD__) || \
-    defined(__NetBSD__)
-# define AMIO_BSD
-#endif
-
-#if defined(__linux__) || defined(AMIO_BSD) || defined(__sun__)
+#if defined(KE_BSD) || defined(KE_LINUX) || defined(KE_SOLARIS)
 # define AMIO_POLL_AVAILABLE
 #endif
 
-#if defined(__sun__)
+#if defined(KE_SOLARIS)
 class CompletionPort;
 #endif
 
 // Creates message pumps.
-class AMIO_CLASS PollerFactory
+class AMIO_LINK PollerFactory
 {
  public:
   // Create a message pump using the best available polling technique. The pump
@@ -201,7 +211,7 @@ class AMIO_CLASS PollerFactory
   static PassRef<IOError> CreatePollImpl(Poller **outp);
 #endif
 
-#if defined(__linux__)
+#if defined(KE_LINUX)
   // Create a message pump based on epoll(). By default maxEventsPerPoll is 
   // 256, when used through CreatePoller(). Use 0 for the default.
   //
@@ -209,7 +219,7 @@ class AMIO_CLASS PollerFactory
   // considered the most efficient polling mechanism and has native edge-
   // triggering.
   static PassRef<IOError> CreateEpollImpl(Poller **outp, size_t maxEventsPerPoll = 0);
-#elif defined(AMIO_BSD)
+#elif defined(KE_BSD)
   // Create a message pump based on kqueue(). By default maxEventsPerPoll is
   // 256, when used through CreatePoller(). Use 0 for the default.
   //
@@ -218,7 +228,7 @@ class AMIO_CLASS PollerFactory
   // triggering). It is assumed to exist by default on Darwin, FreeBSD, and
   // OpenBSD.
   static PassRef<IOError> CreateKqueueImpl(Poller **outp, size_t maxEventsPerPoll = 0);
-#elif defined(__sun__)
+#elif defined(KE_SOLARIS)
   // Create a message pump based on /dev/poll. By default maxEventsPerPoll is
   // 256. Use 0 for the default. CreatePoller() never chooses /dev/poll.
   static PassRef<IOError> CreateDevPollImpl(Poller **outp, size_t maxEventsPerPoll = 0);
@@ -241,7 +251,7 @@ class AMIO_CLASS PollerFactory
 };
 
 // Flags that can be used for some TransportFactory functions.
-enum AMIO_CLASS TransportFlags
+enum AMIO_LINK TransportFlags
 {
   // Automatically close a transport. This is only relevant when a transport is
   // created from an existing operating system construct (such as a file
@@ -252,7 +262,7 @@ enum AMIO_CLASS TransportFlags
   kTransportDefaultFlags  = kTransportAutoClose
 };
 
-class AMIO_CLASS TransportFactory
+class AMIO_LINK TransportFactory
 {
  public:
   // Create a transport from a pre-existing file descriptor.

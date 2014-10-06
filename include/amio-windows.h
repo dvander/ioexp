@@ -94,7 +94,7 @@ class IOContext : public ke::RefcountedThreadsafe<IOContext>
 //
 // If a system requires that immediate delivery is enabled, then there is no
 // need to track whether or not the Context was set.
-struct AMIO_CLASS IOResult
+struct AMIO_LINK IOResult
 {
   // Set if there was an error.
   ke::Ref<IOError> Error;
@@ -144,7 +144,7 @@ struct AMIO_CLASS IOResult
 // It is the application's responsibility to resolve this.
 //
 // Functions are not thread-safe unless otherwise noted.
-class AMIO_CLASS Transport : public ke::RefcountedThreadsafe<Transport>
+class AMIO_LINK Transport : public ke::RefcountedThreadsafe<Transport>
 {
  public:
   virtual ~Transport()
@@ -221,7 +221,7 @@ class AMIO_CLASS Transport : public ke::RefcountedThreadsafe<Transport>
 };
 
 // Status listeners for transports.
-class AMIO_CLASS IOListener : public ke::RefcountedThreadsafe<IOListener>
+class AMIO_LINK IOListener : public ke::VirtualRefcountedThreadsafe
 {
  public:
   virtual ~IOListener()
@@ -250,7 +250,7 @@ enum TransportFlags
 };
 
 // Transport factory methods.
-class AMIO_CLASS TransportFactory
+class AMIO_LINK TransportFactory
 {
  public:
   // Create a transport around an existing IO handle. The Handle must be
@@ -282,7 +282,7 @@ class AMIO_CLASS TransportFactory
 // transports) will be leaked.
 //
 // Functions are not thread-safe unless otherwise noted.
-class AMIO_CLASS Poller : public ke::RefcountedThreadsafe<Poller>
+class AMIO_LINK Poller : public ke::RefcountedThreadsafe<Poller>
 {
  public:
   virtual ~Poller()
@@ -329,7 +329,7 @@ class AMIO_CLASS Poller : public ke::RefcountedThreadsafe<Poller>
   virtual bool RequireImmediateDelivery() = 0;
 };
 
-class AMIO_CLASS PollerFactory
+class AMIO_LINK PollerFactory
 {
  public:
   // Create a poller. By default the backing implementation uses IOCP
@@ -357,7 +357,7 @@ class WinSocket;
 // available here, as it is more convenient, albeit less efficient than IOCP.
 // This API is not compatible with the Transport-based API, and it is not
 // threadsafe.
-class AMIO_CLASS Socket : public ke::RefcountedThreadsafe<Socket>
+class AMIO_LINK Socket : public ke::RefcountedThreadsafe<Socket>
 {
  public:
   virtual ~Socket()
@@ -404,7 +404,7 @@ class AMIO_CLASS Socket : public ke::RefcountedThreadsafe<Socket>
 };
 
 // Used to receive notifications about status changes.
-class AMIO_CLASS SocketListener : public ke::RefcountedThreadsafe<SocketListener>
+class AMIO_LINK SocketListener : public ke::RefcountedThreadsafe<SocketListener>
 {
  public:
   virtual ~SocketListener()
@@ -436,7 +436,7 @@ class AMIO_CLASS SocketListener : public ke::RefcountedThreadsafe<SocketListener
 };
 
 // Poller variant only for sockets. SocketPollers are not thread-safe.
-class AMIO_CLASS SocketPoller
+class AMIO_LINK SocketPoller
 {
  public:
    // Poll for new events. If |timeoutMs| is greater than zero, Poll() may block
@@ -465,7 +465,7 @@ class AMIO_CLASS SocketPoller
    virtual void Detach(Ref<Socket> socket) = 0;
 };
 
-class AMIO_CLASS SocketPollerFactory
+class AMIO_LINK SocketPollerFactory
 {
   // Creates the best socket poller available.
   static PassRef<IOError> CreatePoller();

@@ -17,11 +17,15 @@
 namespace amio {
 
 #if defined(AMIO_IMPORT)
-# define AMIO_CLASS KE_IMPORT
+# define AMIO_LINK KE_IMPORT
 #elif defined(AMIO_EXPORT)
-# define AMIO_CLASS KE_EXPORT
+# define AMIO_LINK KE_EXPORT
 #else
-# define AMIO_CLASS
+# define AMIO_LINK
+#endif
+
+#if !defined(_WIN32)
+# define AMIO_POSIX
 #endif
 
 using namespace ke;
@@ -35,7 +39,7 @@ enum class ErrorType
   Exception     // Generic exception.
 };
 #else
-struct AMIO_CLASS ErrorType
+struct AMIO_LINK ErrorType
 {
   int type;
   static const ErrorType System;
@@ -68,7 +72,7 @@ static inline EventFlags & operator &=(EventFlags &left, const EventFlags &right
 }
 
 // Represents an I/O error.
-class AMIO_CLASS IOError : public ke::RefcountedThreadsafe<IOError>
+class AMIO_LINK IOError : public ke::RefcountedThreadsafe<IOError>
 {
  public:
   virtual ~IOError()

@@ -26,6 +26,7 @@ runner.compiler.linkflags += [KE.static_lib.binary]
 
 runner.sources += [
   'main.cc',
+  'network.cc',
 ]
 
 if builder.target_platform != 'windows':

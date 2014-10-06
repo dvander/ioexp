@@ -76,6 +76,17 @@ check(bool condition, const char *fmt, ...)
   return condition;
 }
 
+static inline void
+print_actual(const char *fmt, ...)
+{
+  fprintf(stderr, " got: ");
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  fprintf(stderr, "\n");
+}
+
 static inline bool
 check_error(Ref<IOError> error, const char *fmt, ...)
 {
@@ -97,6 +108,7 @@ check_error(Ref<IOError> error, const char *fmt, ...)
 
 // Must be implemented on each platform.
 void SetupTests();
+void SetupNetworkTests();
 
 #if !defined(_WIN32)
 typedef PassRef<IOError> (*CreatePoller_t)(Poller **outp);

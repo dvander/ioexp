@@ -18,6 +18,20 @@ namespace amio {
 // Both of these format a string and return a buffer allocated with new[].
 char *FormatStringVa(const char *fmt, va_list ap);
 char *FormatString(const char *fmt, ...);
+size_t FormatArgs(char *buffer, size_t maxlength, const char *fmt, ...);
+size_t FormatArgsVa(char *buffer, size_t maxlength, const char *fmt, va_list ap);
+
+static inline size_t
+CopyString(char *dest, size_t maxlength, const char *src)
+{
+  if (!maxlength)
+    return 0;
+  char *start = dest;
+  while (*src && --maxlength)
+    *dest++ = *src++;
+  *dest = '\0';
+  return dest - start;
+}
 
 }
 

@@ -83,3 +83,36 @@ amio::FormatString(const char *fmt, ...)
   va_end(ap);
   return result;
 }
+
+size_t
+amio::FormatArgsVa(char *buffer, size_t maxlength, const char *fmt, va_list ap) 
+{
+  if (maxlength == 0)
+    return 0;
+
+  int r = vsnprintf(buffer, maxlength, fmt, ap);
+#if defined(_MSC_VER)
+  if (r == -1 || size_t(r) >= maxlength) {
+      buffer[maxlength - 1] = '\0';
+      return maxlength - 1;
+  }
+#else
+  if (r == -1) {
+    buffer[0] = '\0';
+    return 0;
+  }
+  if (size_t(r) >= maxlength)
+    return maxlength - 1;
+#endif
+  return size_t(r);
+}
+
+size_t
+amio::FormatArgs(char *buffer, size_t maxlength, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  size_t result = FormatArgsVa(buffer, maxlength, fmt, ap);
+  va_end(ap);
+  return result;
+}
