@@ -26,12 +26,14 @@ int main(int argc, char **argv)
   SetupTests();
   SetupNetworkTests();
 
+  bool ok = true;
   for (size_t i = 0; i < Tests.length(); i++) {
     Ref<Test> test = Tests[i];
     if (argc >= 2 && strcmp(argv[1], test->name()) != 0)
       continue;
     fprintf(stdout, "Testing %s... \n", test->name());
     if (!test->Run()) {
+      ok = false;
       fprintf(stdout, "TEST: %s FAIL\n", test->name());
       break;
     }
@@ -40,7 +42,8 @@ int main(int argc, char **argv)
     // Kill the test.
     Tests[i] = nullptr;
   }
-  fprintf(stdout, "All tests passed!\n");
+  if (ok)
+    fprintf(stdout, "All tests passed!\n");
 }
 
 #if defined(__GNUC__)

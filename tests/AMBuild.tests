@@ -46,5 +46,6 @@ elif builder.target_platform == 'solaris':
   runner.sources += [
     'test-solaris.cc',
   ]
+  runner.compiler.linkflags += KE.pkg_linkflags
 
 builder.Add(runner)

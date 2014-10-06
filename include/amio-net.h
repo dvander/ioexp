@@ -62,6 +62,8 @@ class Address : public ke::Refcounted<Address>
   //
   // IPv6 addresses, if specifying a port or service, should be encased in
   // braces. I.e. [0:0:0:0::0]:80.
+  //
+  // Returns nullptr with no error if the address could not be resolved.
   static PassRef<Address> Resolve(Ref<IOError> *error, AddressFamily af, const char *address);
 
   // Return the address family.
@@ -84,6 +86,8 @@ class IPv4Address : public Address
  public:
   // Resolve an IPv4 address. AMIO cannot guarantee non-blocking resolution
   // ability, so take care: Resolve() can block.
+  //
+  // Returns nullptr with no error if the address could not be resolved.
   static PassRef<IPv4Address> Resolve(Ref<IOError> *error, const char *address);
 
   AddressFamily Family() override {

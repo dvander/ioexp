@@ -173,6 +173,10 @@ class KEConfig:
       os.path.join(builder.sourcePath, 'include'),
     ]
 
+    self.pkg_linkflags = []
+    if builder.target_platform == 'solaris':
+      self.pkg_linkflags += ['-lpthread', '-lsocket', '-lnsl']
+
 KE = KEConfig()
 KE.setup()
 

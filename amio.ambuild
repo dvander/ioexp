@@ -64,7 +64,6 @@ def Configure(binary):
       'solaris/amio-solaris-devpoll.cc',
       'solaris/amio-solaris-port.cc',
     ]
-    binary.compiler.linkflags += ['-lpthread', '-lsocket']
   return binary
 
 static_lib = builder.compiler.StaticLibrary('amio.a')

@@ -131,7 +131,7 @@ class AMIO_LINK StatusListener : public ke::VirtualRefcounted
 class IPollable
 {
  public:
-  virtual PassRef<Transport> Transport() = 0;
+  virtual PassRef<amio::Transport> Transport() = 0;
   virtual PassRef<StatusListener> Listener() = 0;
   virtual EventFlags Events() = 0;
 };
