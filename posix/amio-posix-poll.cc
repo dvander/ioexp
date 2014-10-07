@@ -57,13 +57,10 @@ PollImpl::Initialize()
 PassRef<IOError>
 PollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, EventFlags eventMask)
 {
-  Ref<PosixTransport> transport(baseTransport->toPosixTransport());
-  if (!transport)
-    return eIncompatibleTransport;
-  if (transport->pump())
-    return eTransportAlreadyAttached;
-  if (transport->fd() == -1)
-    return eTransportClosed;
+  PosixTransport *transport;
+  Ref<IOError> error = toPosixTransport(&transport, baseTransport);
+  if (error)
+    return error;
 
   if (size_t(transport->fd()) >= fds_.length()) {
     if (!fds_.resize(transport->fd() + 1))

@@ -39,15 +39,13 @@ SelectImpl::~SelectImpl()
 PassRef<IOError>
 SelectImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, EventFlags eventMask)
 {
-  Ref<PosixTransport> transport(baseTransport->toPosixTransport());
-  if (!transport)
-    return eIncompatibleTransport;
-  if (transport->pump())
-    return eTransportAlreadyAttached;
+  PosixTransport *transport;
+  Ref<IOError> error = toPosixTransport(&transport, baseTransport);
+  if (error)
+    return error;
+
   if (transport->fd() >= FD_SETSIZE)
     return new GenericError("descriptor %d is above FD_SETSIZE (%d)", transport->fd(), FD_SETSIZE);
-  if (transport->fd() == -1)
-    return eTransportClosed;
 
   assert(listener);
   assert(size_t(transport->fd()) < max_fds_);

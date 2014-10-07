@@ -12,6 +12,7 @@
 #include "posix/amio-posix-base-poller.h"
 #include <unistd.h>
 #include <errno.h>
+#include <fcntl.h>
 
 using namespace amio;
 
@@ -24,7 +25,7 @@ PosixTransport::PosixTransport(int fd, TransportFlags flags)
 
 PosixTransport::~PosixTransport()
 {
-  if (flags_ & kTransportAutoClose)
+  if (!(flags_ & kTransportNoAutoClose))
     Close();
 }
 
@@ -93,4 +94,43 @@ PosixTransport::Write(IOResult *result, const void *buffer, size_t maxlength)
   result->Completed = true;
   result->Bytes = size_t(rv);
   return true;
+}
+
+static Ref<IOError>
+SetNonblocking(int fd)
+{
+  int flags = fcntl(fd, F_GETFL);
+  if (flags == -1)
+    return new PosixError();
+  if (!(flags & O_NONBLOCK)) {
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
+      return new PosixError();
+  }
+  return nullptr;
+}
+
+static Ref<IOError>
+SetCloseOnExec(int fd)
+{
+  int flags = fcntl(fd, F_GETFD);
+  if (flags == -1)
+    return new PosixError();
+  if (!(flags & FD_CLOEXEC)) {
+    if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == -1)
+      return new PosixError();
+  }
+  return nullptr;
+}
+
+PassRef<IOError>
+PosixTransport::Setup()
+{
+  Ref<IOError> error;
+  if ((error = SetNonblocking(fd_)))
+    return error;
+  if (!(flags_ & kTransportNoCloseOnExec)) {
+    if ((error = SetCloseOnExec(fd_)))
+      return error;
+  }
+  return nullptr;
 }

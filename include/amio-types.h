@@ -50,10 +50,16 @@ struct AMIO_LINK ErrorType
 
 enum EventFlags : uint32_t
 {
-  Event_Read  = 0x00000001,
-  Event_Write = 0x00000002,
+  Event_Read   =  0x00000001,
+  Event_Write  =  0x00000002,
 
-  Events_None = 0x00000000
+  // Normally, events are cleared after they are received, and I/O operations
+  // must return "pending" or "incomplete" to signal that a new event is
+  // needed. If the sticky flag is set, events will signal as long as the
+  // event is true.
+  Event_Sticky =  0x00000004,
+
+  Events_None  =  0x00000000
 };
 static inline EventFlags operator |(const EventFlags &left, const EventFlags &right) {
   return EventFlags(uint32_t(left) | uint32_t(right));

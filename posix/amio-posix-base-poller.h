@@ -29,6 +29,8 @@ class PosixPoller : public Poller
   // Note that we don't use Ref<> here, since we potentially call this from
   // the transport's destructor, we don't want to revive the object.
   virtual void unhook(PosixTransport *transport) = 0;
+
+  PassRef<IOError> toPosixTransport(PosixTransport **outp, Transport *transport);
 };
 
 } // namespace amio

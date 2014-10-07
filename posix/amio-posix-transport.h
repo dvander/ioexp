@@ -44,6 +44,9 @@ class PosixTransport : public Transport
     return fd_ == -1;
   }
 
+  // Setup the descriptor, if it hasn't been set up already.
+  PassRef<IOError> Setup();
+
   // Return the underlying file descriptor.
   int fd() const {
     return fd_;
@@ -65,6 +68,9 @@ class PosixTransport : public Transport
   }
   PassRef<StatusListener> listener() {
     return listener_;
+  }
+  void changeListener(Ref<StatusListener> listener) {
+    listener_ = listener;
   }
 
   // These are used by message pumps; they should not be called from outside.

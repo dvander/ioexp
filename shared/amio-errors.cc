@@ -16,6 +16,8 @@ ke::Ref<GenericError> amio::eTransportAlreadyAttached = new GenericError("transp
 ke::Ref<GenericError> amio::eOutOfMemory = new GenericError("out of memory");
 ke::Ref<GenericError> amio::eUnknownHangup = new GenericError("unknown hangup");
 ke::Ref<GenericError> amio::eTransportClosed = new GenericError("transport is closed");
+ke::Ref<GenericError> amio::eUnsupportedAddressFamily = new GenericError("unsupported address family");
+ke::Ref<GenericError> amio::eUnsupportedProtocol = new GenericError("unsupported protocol");
 
 #if !defined(KE_CXX11)
 const ErrorType ErrorType::System = {0};

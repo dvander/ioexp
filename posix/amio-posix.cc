@@ -15,50 +15,28 @@
 # include "posix/amio-posix-poll.h"
 #endif
 #include <unistd.h>
-#include <fcntl.h>
 #include <signal.h>
 
 using namespace ke;
 using namespace amio;
 
-static Ref<IOError>
-SetNonBlocking(int fd)
-{
-  int flags = fcntl(fd, F_GETFL);
-  if (flags == -1)
-    return new PosixError();
-  if (!(flags & O_NONBLOCK)) {
-    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
-      return new PosixError();
-  }
-  return nullptr;
-}
-
 PassRef<IOError>
 TransportFactory::CreateFromDescriptor(Ref<Transport> *outp, int fd, TransportFlags flags)
 {
-  Ref<IOError> error = SetNonBlocking(fd);
-  if (error)
+  Ref<IOError> error;
+  Ref<PosixTransport> transport = new PosixTransport(fd, flags);
+  if ((error = transport->Setup()) != nullptr)
     return error;
-  *outp = new PosixTransport(fd, flags);
+  *outp = transport;
   return nullptr;
 }
 
 PassRef<IOError>
-TransportFactory::CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp)
+TransportFactory::CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp, TransportFlags flags)
 {
   int fds[2];
   if (pipe(fds) == -1)
     return new PosixError();
-
-  Ref<IOError> error;
-  if (((error = SetNonBlocking(fds[0])) != nullptr) ||
-       (error = SetNonBlocking(fds[1])) != nullptr)
-  {
-    close(fds[0]);
-    close(fds[1]);
-    return error;
-  }
 
   *readerp = new PosixTransport(fds[0], kTransportDefaultFlags);
   *writerp = new PosixTransport(fds[1], kTransportDefaultFlags);
@@ -93,4 +71,10 @@ AutoDisableSigpipe::AutoDisableSigpipe()
 AutoDisableSigpipe::~AutoDisableSigpipe()
 {
   signal(SIGPIPE, prev_handler_);
+}
+
+PassRef<IOError>
+Poller::Attach(IPollable *pollable)
+{
+  return pollable->Attach(this);
 }

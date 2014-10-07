@@ -125,64 +125,66 @@ class AMIO_LINK StatusListener : public ke::VirtualRefcounted
   {}
 };
 
+// Defined later.
+class Poller;
+
 // A IPollable is an object which can be polled. It is a pair of a transport
 // and listener. It is a helper for higher-level layers which require using
-// specific listeners.
+// specific listeners to provide a cleaner API.
 class IPollable
 {
  public:
-  virtual PassRef<amio::Transport> Transport() = 0;
-  virtual PassRef<StatusListener> Listener() = 0;
-  virtual EventFlags Events() = 0;
+  virtual PassRef<IOError> Attach(Poller *poller) = 0;
 };
 
 // A poller is responsible for polling for events. It is not thread-safe.
 class AMIO_LINK Poller
 {
  public:
-   virtual ~Poller()
-   {}
+  virtual ~Poller()
+  {}
 
-   // Poll for new events. If |timeoutMs| is greater than zero, Poll() may block
-   // for at most that many milliseconds. If the message pump has no transports
-   // registered, Poll() will exit immediately without an error.
-   //
-   // An error is returned if the poll itself failed; individual read/write
-   // failures are propagated through status listeners.
-   //
-   // Poll() is not re-entrant.
-   virtual PassRef<IOError> Poll(int timeoutMs = kNoTimeout) = 0;
+  // The type of a listener, for notifications.
+  typedef StatusListener Listener;
 
-   // Interrupt a poll operation. The active poll operation will return an error.
-   virtual void Interrupt() = 0;
+  // Poll for new events. If |timeoutMs| is greater than zero, Poll() may block
+  // for at most that many milliseconds. If the message pump has no transports
+  // registered, Poll() will exit immediately without an error.
+  //
+  // An error is returned if the poll itself failed; individual read/write
+  // failures are propagated through status listeners.
+  //
+  // Poll() is not re-entrant.
+  virtual PassRef<IOError> Poll(int timeoutMs = kNoTimeout) = 0;
 
-   // Attachs a transport with the pump. A transport can be registered to at
-   // most one pump at any given time. Only transports created via
-   // TransportFactory can be registered.
-   //
-   // The eventMask specifies the initial events the poller will listen for
-   // on this transport. Since all pollers simulate edge-triggering, it is the
-   // caller's responsibility to request new events via Read() or Write().
-   //
-   // Because Read() and Write() automatically watch for events, it is not
-   // necessary to pass any event flags here as long one of those will be
-   // called.
-   virtual PassRef<IOError> Attach(
-     Ref<Transport> transport,
-     Ref<StatusListener> listener,
-     EventFlags eventMask
-   ) = 0;
+  // Interrupt a poll operation. The active poll operation will return an error.
+  virtual void Interrupt() = 0;
 
-   // Detachs a transport from a pump. This happens automatically if the
-   // transport is closed, a status error or hangup is generated, or a Read()
-   // operation returns Ended. It is safe to deregister a transport multiple
-   // times.
-   virtual void Detach(Ref<Transport> transport) = 0;
+  // Attachs a transport with the pump. A transport can be registered to at
+  // most one pump at any given time. Only transports created via
+  // TransportFactory can be registered.
+  //
+  // The eventMask specifies the initial events the poller will listen for
+  // on this transport. Since all pollers simulate edge-triggering, it is the
+  // caller's responsibility to request new events via Read() or Write().
+  //
+  // Because Read() and Write() automatically watch for events, it is not
+  // necessary to pass any event flags here as long one of those will be
+  // called.
+  virtual PassRef<IOError> Attach(
+    Ref<Transport> transport,
+    Ref<StatusListener> listener,
+    EventFlags eventMask
+  ) = 0;
 
-   // Helper for IPollables.
-   PassRef<IOError> Attach(IPollable *pollable) {
-     return Attach(pollable->Transport(), pollable->Listener(), pollable->Events());
-   }
+  // Detachs a transport from a pump. This happens automatically if the
+  // transport is closed, a status error or hangup is generated, or a Read()
+  // operation returns Ended. It is safe to deregister a transport multiple
+  // times.
+  virtual void Detach(Ref<Transport> transport) = 0;
+
+  // Helper for IPollables.
+  PassRef<IOError> Attach(IPollable *pollable);
 };
 
 #if defined(KE_BSD) || defined(KE_LINUX) || defined(KE_SOLARIS)
@@ -256,20 +258,25 @@ enum AMIO_LINK TransportFlags
   // Automatically close a transport. This is only relevant when a transport is
   // created from an existing operating system construct (such as a file
   // descriptor).
-  kTransportAutoClose     = 0x00000001,
+  kTransportNoAutoClose   = 0x00000001,
 
-  kTransportNoFlags       = 0x00000000,
-  kTransportDefaultFlags  = kTransportAutoClose
+  // Don't set FD_CLOEXEC. By default, all transports have this flag, even if
+  // the transport does not own the descriptor.
+  kTransportNoCloseOnExec = 0x00000002,
+
+  kTransportDefaultFlags  = 0x00000000
 };
 
 class AMIO_LINK TransportFactory
 {
  public:
-  // Create a transport from a pre-existing file descriptor.
+  // Create a transport from a pre-existing file descriptor. If this fails, the
+  // descriptor is left open even if flags does no contain kTransportNoAutoClose.
   static PassRef<IOError> CreateFromDescriptor(Ref<Transport> *outp, int fd, TransportFlags flags = kTransportDefaultFlags);
 
   // Create a transport for a unix pipe (via the pipe() call).
-  static PassRef<IOError> CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp);
+  static PassRef<IOError> CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp,
+                                     TransportFlags flags = kTransportDefaultFlags);
 };
 
 // This class can be used to automatically disable SIGPIPE. By default, Poll()

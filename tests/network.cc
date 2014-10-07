@@ -25,6 +25,8 @@ class NetworkTests : public Test
       return false;
     if (!resolve_ipv6())
       return false;
+    if (!resolve_unix())
+      return false;
     return true;
   }
 
@@ -112,6 +114,23 @@ class NetworkTests : public Test
       return false;
     }
 
+    return true;
+  }
+
+  bool resolve_unix() {
+#if defined(KE_POSIX)
+    Ref<IOError> error;
+    Ref<net::Address> address = net::UnixAddress::Resolve(&error, "/tmp/tmp.sock");
+    if (!check_error(error, "resolve /tmp/tmp.sock"))
+      return false;
+   
+    AString name = address->ToString();
+    if (!check(name.compare("/tmp/tmp.sock") == 0, "address should be /tmp/tmp.sock")) {
+      print_actual("%s", name.chars());
+      return false;
+    }
+#endif
+    
     return true;
   }
 };

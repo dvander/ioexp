@@ -288,6 +288,9 @@ class AMIO_LINK Poller : public ke::RefcountedThreadsafe<Poller>
   virtual ~Poller()
   {}
 
+  // The type of a listener, for notifications.
+  typedef IOListener Listener;
+
   // Poll for new events. If timeoutMs is 0, then polling will not block. If
   // timeoutMs is greater than 0, it may block for at most that many
   // milliseconds. If timeoutMs is kNoTimeout, it may block indefinitely.

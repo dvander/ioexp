@@ -29,17 +29,22 @@ using namespace amio;
 // Networks types.
 enum class AddressFamily
 {
-  Unknown, // Unknown address family.
-  IPv4,    // IPv4 address.
-  IPv6,    // IPv6 address.
-  Unix     // Unix domain sockets (not available on Windows).
+  IPv4,     // IPv4 address.
+  IPv6,     // IPv6 address.
+  Unix,     // Unix domain sockets (not available on Windows).
+  Unknown   // Unknown address family.
 };
 
 // Supported protocols.
 enum class Protocol
 {
-  TCP,
-  UDP
+  TCP,      // Streaming for IPv4 or IPv6.
+  UDP,      // Datagrams for IPv4 or IPv6.
+  Stream,   // Any stream protocol available. With AF::IP, this is TCP.
+            // With AF::Unix, it is a byte stream protocol.
+  Datagram, // Any datagram protocol available. With AF::IP, this is TCP.
+            // With AF::Unix, it is a message protocol.
+  Unknown
 };
 
 // Abstract representation of a network address.
@@ -137,9 +142,7 @@ class UnixAddress : public Address
   const struct sockaddr *SockAddr() override {
     return reinterpret_cast<sockaddr *>(&sun_);
   }
-  size_t SockAddrLen() override {
-    return offsetof(sockaddr_un, sun_family) + strlen(sun_.sun_path);
-  }
+  size_t SockAddrLen() override;
   ke::AString ToString() override;
 
  private:
@@ -147,38 +150,64 @@ class UnixAddress : public Address
 };
 #endif
 
-// A net listener accepts network connections on a port.
+// A server accepts network connections on a connection-oriented port.
 class Server :
   public IPollable,
   public ke::VirtualRefcountedThreadsafe
 {
  public:
+  enum class Action {
+    // Instructs the I/O layer to try and consume another connection, as long
+    // as it would not block to do so. Note that, like all edge-triggered APIs,
+    // risks starving other I/O operations on the same thread.
+    Again,
+
+    // Instructs the I/O layer to defer any pending connection notifications
+    // until the next call to Poll().
+    DeferNext
+  };
+
   // Events on this listener can be fired upon polling.
   class Listener : public ke::VirtualRefcountedThreadsafe
   {
    public:
     // Called when a new connection is available.
-    virtual void Accept(Ref<amio::Transport> *transport, Ref<Address> address)
-    {}
+    virtual Action Accept(Ref<amio::Transport> *transport, Ref<Address> address) {
+      return Action::DeferNext;
+    }
 
     // Called when an error occurs accepting connections.
     virtual void OnError(Ref<IOError> error)
     {}
+
+    // Called on a fatal error - such as ENOMEM (out of memory) or EMFILE,
+    // which indicates there are no more socket descriptors available.
+    //
+    // Nothing happens on a fatal error, it is just a hint for the application
+    // that the error may happen repeatedly and may require shutdown.
+    virtual void OnFatalError(Ref<IOError> error)
+    {}
   };
 
   // Create a new server on the given address. On success, a non-null server
-  // is returned. It can be added to a poller to begin receiving eveonts on
+  // is returned. It can be added to a poller to begin receiving events on
   // the given listener.
-  static PassRef<Server> *Create(
+  //
+  // Backlog specifies the maximum number of pending connections that can be
+  // enqueued. Use 0 for the default (usually 128).
+  static PassRef<Server> Create(
     Ref<IOError> *error,
     Ref<Address> address,
-    Ref<Listener> listener
+    Protocol protocol,
+    Ref<Server::Listener> listener,
+    unsigned backlog = 0
   );
 
   // Return the address the server is listening on.
-  virtual Ref<Address> ListenAddress() = 0;
+  virtual PassRef<Address> ListenAddress() = 0;
 
-  // Close the server; stops accepting requests.
+  // Close the server; stops accepting requests, and terminates any outstanding
+  // connections.
   virtual void Close() = 0;
 };
 
@@ -188,32 +217,54 @@ class Client
 {
  public:
   // Events on this listener can be fired upon polling.
-  class Listener
+  class Listener : public Poller::Listener
   {
    public:
     // Called when the socket is connected.
     virtual void OnConnect(Ref<amio::Transport> transport)
     {}
-
-    // Called when an error was encountered connecting.
-    virtual void OnError(Ref<IOError> error)
-    {}
   };
 
   // Create a socket that can be polled for when it has connected to the given
-  // address. The client object should be freed with |delete| or stored in a
-  // ke::AutoPtr. It can be discarded at any time after being given to a poller,
-  // as it is only used to communicate polling parameters. The listener will
-  // still be associated as long as the Attach() call succeeded.
+  // address. After attaching to a poller, use Connected() to determine if the
+  // socket has immediately connected. If it has, then OnConnect() will not be
+  // called. If it has not, then OnConnect or OnError will be called during a
+  // Poll() operation to indicate success or failure. If failure is indicated,
+  // the underlying transport is closed after notification.
+  //
+  // Client::Create() should be used for any type of client-oriented transport,
+  // even connection-less protocols.
+  //
+  // It is not necessary to hold onto Client objects; they are only used to
+  // communicate initial connection state.
+  //
+  // Parameters:
+  //  error:     If Create() returns null, this will be set to an error object.
+  //  address:   The address to connect to upon attaching.
+  //  protocol:  The protocol to use for the socket.
+  //  listener:  Listener to receive event callbacks.
   static PassRef<Client> Create(
     Ref<IOError> *error,
     Ref<Address> address,
-    Ref<Listener> listener
+    Protocol protocol,
+    Ref<Client::Listener> listener
   );
+
+  // Returns the underlying transport being used by the connection operation.
+  // This is guaranteed to be available immediately (i.e. it is not delayed
+  // until attaching). However, it is immediately closed if the connection
+  // fails (pending notifications if the error was asynchronous).
+  virtual PassRef<Transport> GetTransport() = 0;
+
+  // Returns true if the socket has connected; false otherwise. No connection
+  // attempt is made until the client has been attached to a poller.
+  virtual bool Connected() = 0;
 };
 
-// Creates a connection to an address. This call will block.
-AMIO_LINK Ref<Transport> ConnectTo(Protocol protocol, Ref<Address> address);
+// Creates a connection to an address. This call will block while making the
+// connection (if the protocol is connection-oriented). Afterward, the
+// transport is in non-blocking mode so it can be used with Pollers.
+AMIO_LINK Ref<Transport> ConnectTo(Ref<IOError> *error, Protocol protocol, Ref<Address> address);
 
 #if defined(KE_WINDOWS)
 // Creates a socket connected to an address. This call will block.

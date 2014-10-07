@@ -34,10 +34,12 @@ def Configure(binary):
   if builder.target_platform != 'windows':
     binary.sources += [
       'posix/amio-posix.cc',
+      'posix/amio-posix-base-poller.cc',
       'posix/amio-posix-errors.cc',
       'posix/amio-posix-transport.cc',
       'posix/amio-posix-select.cc',
       'posix/amio-posix-poll.cc', 
+      'posix/amio-posix-net.cc', 
     ]
     binary.compiler.cflags += ['-fPIC']
 
