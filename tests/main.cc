@@ -16,6 +16,7 @@
 using namespace ke;
 
 ke::Vector<Ref<Test>> ke::Tests;
+ke::Vector<AutoTestContext *> ke::TestContexts;
 
 int main(int argc, char **argv)
 {

@@ -48,15 +48,19 @@ class TestPipes
   }
 
  private:
-  bool setup();
+  bool setup(EventFlags extra = Events_None);
   void reset();
 
   bool test_read_write();
   bool test_poll_write_close();
   bool test_poll_read_close();
+  bool test_sticky();
+  bool test_edge_triggering();
 
   bool wait_for_read();
   bool wait_for_write();
+
+  bool write(const char *msg, size_t len);
 
  private:
   CreatePoller_t constructor_;

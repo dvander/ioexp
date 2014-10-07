@@ -21,7 +21,7 @@ TestPipes::TestPipes(CreatePoller_t ctor, const char *name)
 }
 
 bool
-TestPipes::setup()
+TestPipes::setup(EventFlags extra)
 {
   reset();
 
@@ -29,10 +29,10 @@ TestPipes::setup()
   if (!check_error(error, "create pipes"))
     return false;
 
-  error = poller_->Attach(reader_, this, Event_Read);
+  error = poller_->Attach(reader_, this, Event_Read|extra);
   if (!check_error(error, "attach read pipe"))
     return false;
-  error = poller_->Attach(writer_, this, Event_Write);
+  error = poller_->Attach(writer_, this, Event_Write|extra);
   if (!check_error(error, "attach write pipe"))
     return false;
 
@@ -66,6 +66,8 @@ TestPipes::Run()
     return false;
   if (!test_poll_read_close())
     return false;
+  if (!test_sticky())
+    return false;
 
   reset();
   poller_ = nullptr;
@@ -97,8 +99,70 @@ TestPipes::wait_for_write()
 }
 
 bool
+TestPipes::test_sticky()
+{
+  AutoTestContext test("sticky events");
+  if (!setup(Read_Sticky|Write_Sticky))
+    return false;
+
+  // We should get a write event.
+  if (!check_error(poller_->Poll(), "initial poll"))
+    return false;
+  if (!check(got_write_, "should receive initial write"))
+    return false;
+
+  got_write_ = false;
+  if (!check_error(poller_->Poll(kSafeTimeout), "second poll"))
+    return false;
+  if (!check(got_write_, "should receive second write"))
+    return false;
+  if (!write("a", 1))
+    return false;
+
+  got_read_ = false;
+  if (!check_error(poller_->Poll(kSafeTimeout), "third poll"))
+    return false;
+  if (!check(got_read_, "should have gotten read"))
+    return false;
+  got_read_ = false;
+  if (!check_error(poller_->Poll(kSafeTimeout), "fourth poll"))
+    return false;
+  if (!check(got_read_, "should have gotten read"))
+    return false;
+
+  return true;
+}
+
+bool
+TestPipes::test_edge_triggering()
+{
+  AutoTestContext test("edge-triggering");
+  if (!setup())
+    return false;
+
+  if (!check_error(poller_->Poll(), "initial poll"))
+    return false;
+  if (!check(got_write_, "should receive initial write"))
+    return false;
+  if (!check(got_read_, "should receive initial read"))
+    return false;
+
+  got_write_ = false;
+  got_read_ = false;
+  if (!check_error(poller_->Poll(kSafeTimeout), "initial poll"))
+    return false;
+  if (!check(!got_write_, "should not have gotten a write"))
+    return false;
+  if (!check(!got_read_, "should not have gotten a read"))
+    return false;
+
+  return true;
+}
+
+bool
 TestPipes::test_read_write()
 {
+  AutoTestContext test("reading and writing");
   if (!setup())
     return false;
 
@@ -112,19 +176,8 @@ TestPipes::test_read_write()
     return false;
 
   // Write.
-  size_t nwritten = 0;
-  while (true) {
-    IOResult r;
-    if (!check(writer_->Write(&r, "hello", 5), "write to pipe"))
-      return false;
-    nwritten += r.Bytes;
-    if (nwritten == 5)
-      break;
-
-    got_write_ = false;
-    if (!wait_for_write())
-      return false;
-  }
+  if (!write("hello", 5))
+    return false;
 
   // Read.
   size_t nread = 0;
@@ -166,6 +219,7 @@ TestPipes::test_read_write()
 bool
 TestPipes::test_poll_write_close()
 {
+  AutoTestContext test("polling after a writer is closed");
   if (!setup())
     return false;
 
@@ -193,6 +247,7 @@ TestPipes::test_poll_write_close()
 bool
 TestPipes::test_poll_read_close()
 {
+  AutoTestContext test("polling after a reader is closed");
   if (!setup())
     return false;
 
@@ -216,5 +271,25 @@ TestPipes::test_poll_read_close()
   if (!check(r.Error != nullptr, "got error"))
     return false;
 
+  return true;
+}
+
+bool
+TestPipes::write(const char *msg, size_t len)
+{
+  // Write.
+  size_t nwritten = 0;
+  while (true) {
+    IOResult r;
+    if (!check(writer_->Write(&r, msg + nwritten, len - nwritten), "write to pipe"))
+      return false;
+    nwritten += r.Bytes;
+    if (nwritten == len)
+      break;
+
+    got_write_ = false;
+    if (!wait_for_write())
+      return false;
+  }
   return true;
 }

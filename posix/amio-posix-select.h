@@ -46,6 +46,7 @@ class SelectImpl : public PosixPoller
   struct SelectData {
     Ref<PosixTransport> transport;
     uintptr_t modified;
+    EventFlags flags;
 
     SelectData() : modified(0)
     {}

@@ -50,14 +50,23 @@ struct AMIO_LINK ErrorType
 
 enum EventFlags : uint32_t
 {
-  Event_Read   =  0x00000001,
-  Event_Write  =  0x00000002,
+  Event_Read   =  0x1,
+  Event_Write  =  0x2,
 
   // Normally, events are cleared after they are received, and I/O operations
   // must return "pending" or "incomplete" to signal that a new event is
   // needed. If the sticky flag is set, events will signal as long as the
   // event is true.
-  Event_Sticky =  0x00000004,
+  //
+  // Non-sticky events ("edge-triggered") are more efficient, however, it can
+  // lead to starvation if too much I/O is processed while polling. Sticky
+  // (level-triggered) events allow for incremental processing, without the
+  // burden of creating an parallel event queue.
+  //
+  // These flags do not initiate listening for an event; i.e.,
+  // Event_Read|ReadSticky indicates "initiate reading, with level-triggering".
+  Read_Sticky  =  0x4,
+  Write_Sticky =  0x8,
 
   Events_None  =  0x00000000
 };

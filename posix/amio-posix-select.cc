@@ -53,6 +53,7 @@ SelectImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, E
   transport->attach(this, listener);
   fds_[transport->fd()].transport = transport;
   fds_[transport->fd()].modified = generation_;
+  fds_[transport->fd()].flags = eventMask;
 
   if (transport->fd() > fd_watermark_)
     fd_watermark_ = transport->fd();
@@ -103,16 +104,20 @@ SelectImpl::Poll(int timeoutMs)
       continue;
 
     if (FD_ISSET(i, &read_fds)) {
-      // Pre-emptively remove this descriptor to simulate edge-triggering.
-      FD_CLR(i, &read_fds_);
+      if (!(fds_[i].flags & Read_Sticky)) {
+        // Pre-emptively remove this descriptor to simulate edge-triggering.
+        FD_CLR(i, &read_fds_);
+      }
 
       fds_[i].transport->listener()->OnReadReady(fds_[i].transport);
       if (!isEventValid(i))
         continue;
     }
     if (FD_ISSET(i, &write_fds)) {
-      // Pre-emptively remove this descriptor to simulate edge-triggering.
-      FD_CLR(i, &write_fds_);
+      if (!(fds_[i].flags & Write_Sticky)) {
+        // Pre-emptively remove this descriptor to simulate edge-triggering.
+        FD_CLR(i, &write_fds_);
+      }
 
       fds_[i].transport->listener()->OnWriteReady(fds_[i].transport);
     }
@@ -125,7 +130,7 @@ PassRef<IOError>
 SelectImpl::onReadWouldBlock(PosixTransport *transport)
 {
   int fd = transport->fd();
-  assert(fds_[fd].transport);
+  assert(fds_[fd].transport == transport);
   FD_SET(fd, &read_fds_);
   return nullptr;
 }
@@ -134,7 +139,7 @@ PassRef<IOError>
 SelectImpl::onWriteWouldBlock(PosixTransport *transport)
 {
   int fd = transport->fd();
-  assert(fds_[fd].transport);
+  assert(fds_[fd].transport == transport);
   FD_SET(fd, &write_fds_);
   return nullptr;
 }

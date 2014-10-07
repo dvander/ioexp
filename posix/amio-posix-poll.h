@@ -52,6 +52,7 @@ class PollImpl : public PosixPoller
     Ref<PosixTransport> transport;
     size_t slot;
     uintptr_t modified;
+    EventFlags flags;
 
     PollData() : modified(0)
     {}

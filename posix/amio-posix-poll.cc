@@ -99,6 +99,7 @@ PollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, Eve
   fds_[transport->fd()].transport = transport;
   fds_[transport->fd()].slot = slot;
   fds_[transport->fd()].modified = generation_;
+  fds_[transport->fd()].flags = eventMask;
   return nullptr;
 }
 
@@ -146,8 +147,10 @@ PollImpl::Poll(int timeoutMs)
 
     // Prioritize POLLIN over POLLHUP/POLLRDHUP.
     if (revents & POLLIN) {
-      // Remove the flag to simulate edge-triggering.
-      poll_events_[i].events &= ~POLLIN;
+      if (!(fds_[fd].flags & Read_Sticky)) {
+        // Remove the flag to simulate edge-triggering.
+        poll_events_[i].events &= ~POLLIN;
+      }
 
       fds_[fd].transport->listener()->OnReadReady(fds_[fd].transport);
       if (!isEventValid(fd))
@@ -171,8 +174,10 @@ PollImpl::Poll(int timeoutMs)
 
     // Handle output.
     if (revents & POLLOUT) {
-      // Remove the flag to simulate edge-triggering.
-      poll_events_[i].events &= ~POLLOUT;
+      if (!(fds_[fd].flags & Write_Sticky)) {
+        // Remove the flag to simulate edge-triggering.
+        poll_events_[i].events &= ~POLLOUT;
+      }
 
       // This is the last event we handle, so we don't need any re-entrancy
       // checks.

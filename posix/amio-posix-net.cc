@@ -225,6 +225,8 @@ class PosixServer
   }
 
   PassRef<IOError> Attach(Poller *poller) override {
+    assert(false);
+    return nullptr;
   }
 
   PassRef<Address> ListenAddress() override {

@@ -58,12 +58,41 @@ class Test : public VirtualRefcounted
   const char *name_;
 };
 
+class AutoTestContext;
+extern ke::Vector<AutoTestContext *> TestContexts;
+
+static inline void
+PrintSpaces(FILE *fp, size_t n)
+{
+  for (size_t i = 0; i < n; i++)
+    fprintf(fp, " ");
+}
+
+class AutoTestContext
+{
+ public:
+  AutoTestContext(const char *fmt, ...) {
+    PrintSpaces(stdout, TestContexts.length() + 1);
+    fprintf(stdout, "Testing:");
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stdout, fmt, ap);
+    va_end(ap);
+    fprintf(stdout, "\n");
+    TestContexts.append(this);
+  }
+  ~AutoTestContext() {
+    TestContexts.pop();
+  }
+};
+
 extern ke::Vector<Ref<Test>> Tests;
 
 static inline bool
 check(bool condition, const char *fmt, ...)
 {
   FILE *fp = condition ? stdout : stderr;
+  PrintSpaces(fp, TestContexts.length() + 1);
   if (condition)
     fprintf(fp, " -- Ok: ");
   else
@@ -91,6 +120,7 @@ static inline bool
 check_error(Ref<IOError> error, const char *fmt, ...)
 {
   FILE *fp = error ? stderr : stdout;
+  PrintSpaces(fp, TestContexts.length() + 1);
   if (error)
     fprintf(fp, " -- Failure: ");
   else
@@ -113,6 +143,8 @@ void SetupNetworkTests();
 #if !defined(_WIN32)
 typedef PassRef<IOError> (*CreatePoller_t)(Poller **outp);
 #endif
+
+static const int kSafeTimeout = 20;
 
 }
 

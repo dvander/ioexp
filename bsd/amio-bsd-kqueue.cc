@@ -75,16 +75,20 @@ KqueueImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, E
   }
 
   // Pre-fill the two kevent structs beforehand.
-  EV_SET(&listeners_[slot].read, transport->fd(), EVFILT_READ, EV_ADD|EV_CLEAR|EV_DISABLE, 0, 0, kev_userdata_t(slot));
-  EV_SET(&listeners_[slot].write, transport->fd(), EVFILT_WRITE, EV_ADD|EV_CLEAR|EV_DISABLE, 0, 0, kev_userdata_t(slot));
+  EV_SET(&listeners_[slot].read, transport->fd(), EVFILT_READ, EV_ADD|EV_DISABLE, 0, 0, kev_userdata_t(slot));
+  EV_SET(&listeners_[slot].write, transport->fd(), EVFILT_WRITE, EV_ADD|EV_DISABLE, 0, 0, kev_userdata_t(slot));
 
   int nevents = 0;
   struct kevent events[2];
   if (eventMask & Event_Read) {
+    if (!(eventMask & Read_Sticky))
+      listeners_[slot].read.flags |= EV_CLEAR;
     listeners_[slot].read.flags &= ~EV_DISABLE;
     events[nevents++] = listeners_[slot].read;
   }
   if (eventMask & Event_Write) {
+    if (!(eventMask & Write_Sticky))
+      listeners_[slot].read.flags |= EV_CLEAR;
     listeners_[slot].write.flags &= ~EV_DISABLE;
     events[nevents++] = listeners_[slot].write;
   }
