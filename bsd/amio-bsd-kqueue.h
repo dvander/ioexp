@@ -35,15 +35,15 @@ class KqueueImpl : public PosixPoller
   PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
   void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
+  PassRef<IOError> ChangeStickyEvents(Ref<Transport> baseTransport, EventFlags eventMask);
 
   PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
   PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
   void unhook(PosixTransport *transport) override;
 
  private:
-  bool isEventValid(size_t slot) const {
-    return slot < listeners_.length() &&
-           listeners_[slot].modified != generation_;
+  bool isFdChanged(size_t slot) const {
+    return listeners_[slot].modified == generation_;
   }
 
  private:
