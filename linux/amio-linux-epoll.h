@@ -38,27 +38,33 @@ class EpollImpl : public PosixPoller
   PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
   void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
+  PassRef<IOError> ChangeStickyEvents(Ref<Transport> transport, EventFlags eventMask) override;
 
   PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
   PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
   void unhook(PosixTransport *transport) override;
 
  private:
-  bool isEventValid(size_t slot) const {
-    return slot < listeners_.length() &&
-           listeners_[slot].modified != generation_;
+  bool isFdChanged(size_t slot) const {
+    return listeners_[slot].modified == generation_;
   }
+  
+  template <EventFlags outFlag>
+  inline void handleEvent(size_t slot);
 
  private:
   struct PollData {
     Ref<PosixTransport> transport;
     size_t modified;
     epoll_event pe;
+    EventFlags flags;
   };
 
   int ep_;
   bool can_use_rdhup_;
   size_t generation_;
+
+  // Note: we currently do not shrink slots.
   ke::Vector<PollData> listeners_;
   ke::Vector<size_t> free_slots_;
 
@@ -69,5 +75,3 @@ class EpollImpl : public PosixPoller
 } // namespace amio
 
 #endif // _include_amio_linux_epoll_pump_h_
-
-

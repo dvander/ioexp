@@ -68,6 +68,8 @@ TestPipes::Run()
     return false;
   if (!test_sticky())
     return false;
+  if (!test_edge_triggering())
+    return false;
 
   reset();
   poller_ = nullptr;
@@ -102,7 +104,7 @@ bool
 TestPipes::test_sticky()
 {
   AutoTestContext test("sticky events");
-  if (!setup(Read_Sticky|Write_Sticky))
+  if (!setup(Event_Sticky))
     return false;
 
   // We should get a write event.
@@ -130,6 +132,20 @@ TestPipes::test_sticky()
   if (!check(got_read_, "should have gotten read"))
     return false;
 
+  Ref<IOError> error = poller_->ChangeStickyEvents(reader_, Event_Read);
+  if (!check(error != nullptr, "cannot change level-triggered to edge-triggered"))
+    return false;
+
+  poller_->ChangeStickyEvents(reader_, Event_Sticky);
+  if (!check_error(poller_->ChangeStickyEvents(reader_, Event_Sticky), "change events"))
+    return false;
+
+  got_read_ = false;
+  if (!check_error(poller_->Poll(kSafeTimeout), "fourth poll"))
+    return false;
+  if (!check(!got_read_, "should not have gotten read"))
+    return false;
+
   return true;
 }
 
@@ -144,8 +160,6 @@ TestPipes::test_edge_triggering()
     return false;
   if (!check(got_write_, "should receive initial write"))
     return false;
-  if (!check(got_read_, "should receive initial read"))
-    return false;
 
   got_write_ = false;
   got_read_ = false;
@@ -154,6 +168,13 @@ TestPipes::test_edge_triggering()
   if (!check(!got_write_, "should not have gotten a write"))
     return false;
   if (!check(!got_read_, "should not have gotten a read"))
+    return false;
+
+  Ref<IOError> error = poller_->ChangeStickyEvents(reader_, Event_Read|Event_Sticky);
+  if (!check(error != nullptr, "cannot change edge-triggered to level-triggered"))
+    return false;
+  error = poller_->ChangeStickyEvents(reader_, Event_Read);
+  if (!check(error != nullptr, "cannot change edge-triggered events"))
     return false;
 
   return true;

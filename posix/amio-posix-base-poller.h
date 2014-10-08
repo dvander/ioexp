@@ -31,6 +31,13 @@ class PosixPoller : public Poller
   virtual void unhook(PosixTransport *transport) = 0;
 
   PassRef<IOError> toPosixTransport(PosixTransport **outp, Transport *transport);
+  PassRef<PosixTransport> validateEventChange(
+    Ref<Transport> baseTransport,
+    EventFlags eventMask
+  );
+
+  void reportHup(Ref<PosixTransport> transport);
+  void reportError(Ref<PosixTransport> transport);
 };
 
 } // namespace amio

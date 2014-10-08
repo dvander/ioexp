@@ -65,6 +65,30 @@ SelectImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, E
   return nullptr;
 }
 
+PassRef<IOError>
+SelectImpl::ChangeStickyEvents(Ref<Transport> baseTransport, EventFlags eventMask)
+{
+  Ref<PosixTransport> transport = validateEventChange(baseTransport, eventMask);
+  if (!transport)
+    return eIncompatibleTransport;
+
+  int fd = transport->fd();
+  if (!(fds_[fd].flags & Event_Sticky))
+    return eIncompatibleTransport;
+
+  if (eventMask & Event_Read)
+    FD_SET(fd, &read_fds_);
+  else
+    FD_CLR(fd, &read_fds_);
+  if (eventMask & Event_Write)
+    FD_SET(fd, &write_fds_);
+  else
+    FD_CLR(fd, &write_fds_);
+
+  fds_[fd].flags = eventMask;
+  return nullptr;
+}
+
 void
 SelectImpl::Detach(Ref<Transport> baseTransport)
 {
@@ -73,6 +97,24 @@ SelectImpl::Detach(Ref<Transport> baseTransport)
     return;
 
   unhook(transport);
+}
+
+template <EventFlags outFlag>
+inline void
+SelectImpl::handleEvent(fd_set *set, int fd)
+{
+  if (fds_[fd].flags & Event_Sticky) {
+    if (!(fds_[fd].flags & outFlag))
+      return;
+  } else {
+    // Remove the descriptor to simulate edge-triggering.
+    FD_CLR(fd, set);
+  }
+
+  if (outFlag == Event_Read)
+    fds_[fd].transport->listener()->OnReadReady(fds_[fd].transport);
+  else if (outFlag == Event_Write)
+    fds_[fd].transport->listener()->OnWriteReady(fds_[fd].transport);
 }
 
 PassRef<IOError>
@@ -98,29 +140,18 @@ SelectImpl::Poll(int timeoutMs)
     return new PosixError();
 
   generation_++;
-  for (size_t i = 0; i <= size_t(fd_watermark_); i++) {
+  for (int i = 0; i <= fd_watermark_; i++) {
     // Make sure this transport wasn't swapped out or removed.
-    if (!isEventValid(i))
+    if (isFdChanged(i))
       continue;
 
     if (FD_ISSET(i, &read_fds)) {
-      if (!(fds_[i].flags & Read_Sticky)) {
-        // Pre-emptively remove this descriptor to simulate edge-triggering.
-        FD_CLR(i, &read_fds_);
-      }
-
-      fds_[i].transport->listener()->OnReadReady(fds_[i].transport);
-      if (!isEventValid(i))
+      handleEvent<Event_Read>(&read_fds_, i);
+      if (isFdChanged(i))
         continue;
     }
-    if (FD_ISSET(i, &write_fds)) {
-      if (!(fds_[i].flags & Write_Sticky)) {
-        // Pre-emptively remove this descriptor to simulate edge-triggering.
-        FD_CLR(i, &write_fds_);
-      }
-
-      fds_[i].transport->listener()->OnWriteReady(fds_[i].transport);
-    }
+    if (FD_ISSET(i, &write_fds))
+      handleEvent<Event_Write>(&write_fds_, i);
   }
 
   return nullptr;

@@ -17,6 +17,11 @@
 # define EPOLLRDHUP 0x2000
 #endif
 
+static const uint32_t kEmulateReadET  = 0x1;
+static const uint32_t kEmulateWriteET = 0x2;
+static const uint32_t kReadStickied   = 0x4;
+static const uint32_t kWriteStickied  = 0x8;
+
 using namespace ke;
 using namespace amio;
 
@@ -83,7 +88,7 @@ EpollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, Ev
   // Hook up events.
   epoll_event pe;
   pe.data.ptr = (void *)slot;
-  pe.events = EPOLLET;
+  pe.events = (eventMask & Event_Sticky) ? 0 : EPOLLET;
   if (can_use_rdhup_)
     pe.events |= EPOLLRDHUP;
   if (eventMask & Event_Read)
@@ -101,8 +106,36 @@ EpollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, Ev
   listeners_[slot].transport = transport;
   listeners_[slot].modified = generation_;
   listeners_[slot].pe = pe;
+  listeners_[slot].flags = eventMask;
   transport->attach(this, listener);
   transport->setUserData(slot);
+  return nullptr;
+}
+
+PassRef<IOError>
+EpollImpl::ChangeStickyEvents(Ref<Transport> baseTransport, EventFlags eventMask)
+{
+  Ref<PosixTransport> transport = validateEventChange(baseTransport, eventMask);
+  if (!transport)
+    return eIncompatibleTransport;
+
+  size_t slot = transport->getUserData();
+  if (!(listeners_[slot].flags & Event_Sticky))
+    return eIncompatibleTransport;
+  if (listeners_[slot].flags == eventMask)
+    return nullptr;
+
+  epoll_event pe = listeners_[slot].pe;
+  pe.events &= ~(EPOLLIN|EPOLLOUT);
+  if (eventMask & Event_Read)
+    pe.events |= EPOLLIN;
+  if (eventMask & Event_Write)
+    pe.events |= EPOLLOUT;
+  if (epoll_ctl(ep_, EPOLL_CTL_MOD, transport->fd(), &pe) == -1)
+    return new PosixError();
+
+  listeners_[slot].flags = eventMask;
+  listeners_[slot].pe.events = pe.events;
   return nullptr;
 }
 
@@ -116,6 +149,22 @@ EpollImpl::Detach(Ref<Transport> baseTransport)
   unhook(transport);
 }
 
+template <EventFlags outFlag>
+inline void
+EpollImpl::handleEvent(size_t slot)
+{
+  // If we are listening for sticky events, but not this event, bail out. We
+  // only check this for sticky events, since edge-triggered transports cannot
+  // be changed.
+  if ((listeners_[slot].flags & (outFlag|Event_Sticky)) == Event_Sticky)
+    return;
+
+  if (outFlag == Event_Read)
+    listeners_[slot].transport->listener()->OnReadReady(listeners_[slot].transport);
+  else if (outFlag == Event_Write)
+    listeners_[slot].transport->listener()->OnWriteReady(listeners_[slot].transport);
+}
+
 PassRef<IOError>
 EpollImpl::Poll(int timeoutMs)
 {
@@ -127,40 +176,31 @@ EpollImpl::Poll(int timeoutMs)
   for (int i = 0; i < nevents; i++) {
     epoll_event &ep = event_buffer_[i];
     size_t slot = (size_t)ep.data.ptr;
-    if (!isEventValid(slot))
+    if (isFdChanged(slot))
       continue;
 
     // Handle errors first.
     if (ep.events & EPOLLERR) {
-      Ref<PosixTransport> transport = listeners_[slot].transport;
-      Ref<StatusListener> listener = transport->listener();
-      unhook(transport);
-      listener->OnError(transport, eUnknownHangup);
+      reportError(listeners_[slot].transport);
       continue;
     }
 
     // Prioritize EPOLLIN over EPOLLHUP/EPOLLRDHUP.
     if (ep.events & EPOLLIN) {
-      listeners_[slot].transport->listener()->OnReadReady(listeners_[slot].transport);
-      if (!isEventValid(slot))
+      handleEvent<Event_Read>(slot);
+      if (isFdChanged(slot))
         continue;
     }
 
     // Handle explicit hangup.
     if (ep.events & (EPOLLRDHUP|EPOLLHUP)) {
-      Ref<PosixTransport> transport = listeners_[slot].transport;
-      Ref<StatusListener> listener = transport->listener();
-      unhook(transport);
-      listener->OnHangup(transport);
+      reportHup(listeners_[slot].transport);
       continue;
     }
 
     // Handle output.
-    if (ep.events & EPOLLOUT) {
-      // No need to check if the event is still valid since this is the last
-      // check.
-      listeners_[slot].transport->listener()->OnWriteReady(listeners_[slot].transport);
-    }
+    if (ep.events & EPOLLOUT)
+      handleEvent<Event_Write>(slot);
   }
 
   return nullptr;

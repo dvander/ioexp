@@ -53,22 +53,34 @@ enum EventFlags : uint32_t
   Event_Read   =  0x1,
   Event_Write  =  0x2,
 
-  // Normally, events are cleared after they are received, and I/O operations
-  // must return "pending" or "incomplete" to signal that a new event is
-  // needed. If the sticky flag is set, events will signal as long as the
-  // event is true.
+  // Normally, events are cleared after they are received, and the user must
+  // deplete the I/O buffer to signal that a new event is needed. This is called
+  // "edge-triggered" behavior. While edge-triggering is very efficient, huge
+  // volumes of I/O depletion can starve the I/O thread. One way around this is
+  // to buffer I/O events in a separate queue, and incrementally process that
+  // queue in your Poll() loop.
   //
-  // Non-sticky events ("edge-triggered") are more efficient, however, it can
-  // lead to starvation if too much I/O is processed while polling. Sticky
-  // (level-triggered) events allow for incremental processing, without the
-  // burden of creating an parallel event queue.
+  // "Level-triggered" polling makes this easier. In level-trigger mode, events
+  // are not cleared, and will signal for as long as their condition is true.
+  // AMIO exposes level-triggering as the Event_Sticky flag.
   //
-  // These flags do not initiate listening for an event; i.e.,
-  // Event_Read|ReadSticky indicates "initiate reading, with level-triggering".
-  Read_Sticky  =  0x4,
-  Write_Sticky =  0x8,
+  // select(), WSASelect(), poll(), and WSAPoll() are stateless; AMIO emulates
+  // both behavior modes when using them as pollers.
+  //
+  // epoll() and kqueue() have native support for both edge- and level-
+  // triggered behavior*.
+  //
+  // On Solaris, completion ports are (effectively) stateless. AMIO emulates
+  // both behaviors (level-triggering is more expensive as the port must be
+  // re-armed more often). /dev/poll is level-triggered; edge-triggering is
+  // emulated.
+  //
+  // *Note: There is one flag to control behavior for both reads and writes.
+  // Although most pollers can distinguish between the modes on one transport,
+  // epoll() cannot, so for simplicity we do not provide an API for it.
+  Event_Sticky =  0x8,
 
-  Events_None  =  0x00000000
+  Events_None  =  0x0
 };
 static inline EventFlags operator |(const EventFlags &left, const EventFlags &right) {
   return EventFlags(uint32_t(left) | uint32_t(right));

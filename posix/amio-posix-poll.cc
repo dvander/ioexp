@@ -103,6 +103,28 @@ PollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, Eve
   return nullptr;
 }
 
+PassRef<IOError>
+PollImpl::ChangeStickyEvents(Ref<Transport> baseTransport, EventFlags eventMask)
+{
+  Ref<PosixTransport> transport = validateEventChange(baseTransport, eventMask);
+  if (!transport)
+    return eIncompatibleTransport;
+
+  int fd = transport->fd();
+  if (!(fds_[fd].flags & Event_Sticky))
+    return eIncompatibleTransport;
+
+  size_t slot = fds_[fd].slot;
+  poll_events_[slot].events &= ~(POLLIN|POLLOUT);
+  if (eventMask & Event_Read)
+    poll_events_[slot].events |= POLLIN;
+  if (eventMask & Event_Write)
+    poll_events_[slot].events |= POLLOUT;
+
+  fds_[fd].flags = eventMask;
+  return nullptr;
+}
+
 void
 PollImpl::Detach(Ref<Transport> baseTransport)
 {
@@ -111,6 +133,25 @@ PollImpl::Detach(Ref<Transport> baseTransport)
     return;
 
   unhook(transport);
+}
+
+template <int inFlag, EventFlags outFlag>
+inline void
+PollImpl::handleEvent(size_t event_idx, int fd)
+{
+  if (fds_[fd].flags & Event_Sticky) {
+    // Ignore - the event's been changed.
+    if (!(fds_[fd].flags & outFlag))
+      return;
+  } else {
+    // Unset to emulate edge-triggered behavior.
+    poll_events_[event_idx].events &= ~inFlag;
+  }
+
+  if (outFlag == Event_Read)
+    fds_[fd].transport->listener()->OnReadReady(fds_[fd].transport);
+  else if (outFlag == Event_Write)
+    fds_[fd].transport->listener()->OnWriteReady(fds_[fd].transport);
 }
 
 PassRef<IOError>
@@ -132,57 +173,35 @@ PollImpl::Poll(int timeoutMs)
     nevents--;
 
     // We have to check this in case the list changes during iteration.
-    if (!isEventValid(fd))
+    if (isFdChanged(fd))
       continue;
 
     // Handle errors first.
     if (revents & POLLERR) {
-      // Get a local copy of the poll data before we wipe it out.
-      Ref<PosixTransport> transport = fds_[fd].transport;
-      Ref<StatusListener> listener = transport->listener();
-      unhook(transport);
-      listener->OnError(transport, eUnknownHangup);
+      reportError(fds_[fd].transport);
       continue;
     }
 
     // Prioritize POLLIN over POLLHUP/POLLRDHUP.
     if (revents & POLLIN) {
-      if (!(fds_[fd].flags & Read_Sticky)) {
-        // Remove the flag to simulate edge-triggering.
-        poll_events_[i].events &= ~POLLIN;
-      }
-
-      fds_[fd].transport->listener()->OnReadReady(fds_[fd].transport);
-      if (!isEventValid(fd))
+      handleEvent<POLLIN, Event_Read>(i, fd);
+      if (isFdChanged(fd))
         continue;
     }
 
     // Handle explicit hangup.
 #if defined(__linux__)
-    if (revents & (POLLRDHUP|POLLHUP))
+    if (revents & (POLLRDHUP|POLLHUP)) {
 #else
-    if (revents & POLLHUP)
+    if (revents & POLLHUP) {
 #endif
-    {
-      // Get a local copy of the poll data before we wipe it out.
-      Ref<PosixTransport> transport = fds_[fd].transport;
-      Ref<StatusListener> listener = transport->listener();
-      unhook(transport);
-      listener->OnHangup(transport);
+      reportHup(fds_[fd].transport);
       continue;
     }
 
     // Handle output.
-    if (revents & POLLOUT) {
-      if (!(fds_[fd].flags & Write_Sticky)) {
-        // Remove the flag to simulate edge-triggering.
-        poll_events_[i].events &= ~POLLOUT;
-      }
-
-      // This is the last event we handle, so we don't need any re-entrancy
-      // checks.
-      fds_[fd].transport->listener()->OnWriteReady(fds_[fd].transport);
-    }
+    if (revents & POLLOUT)
+      handleEvent<POLLOUT, Event_Write>(i, fd);
   }
 
   return nullptr;
@@ -191,7 +210,7 @@ PollImpl::Poll(int timeoutMs)
 void
 PollImpl::Interrupt()
 {
-  // Not yet implemented.
+  // NYI
   abort();
 }
 
