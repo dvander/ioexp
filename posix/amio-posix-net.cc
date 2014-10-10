@@ -11,6 +11,7 @@
 #include <amio-net.h>
 #include <am-string.h>
 #include "../posix/amio-posix-errors.h"
+#include "../posix/amio-posix-base-poller.h"
 #include "../posix/amio-posix-transport.h"
 #include "../shared/amio-string.h"
 #include <errno.h>
@@ -177,74 +178,92 @@ class PosixConnectionT : public PosixConnection
   }
 };
 
-#if 0
-class PosixClient
+class ConnectOp
  : public StatusListener,
-   public ke::Refcounted<PosixClient>
+   public Operation,
+   public ke::Refcounted<ConnectOp>
 {
  public:
-  PosixClient(Ref<PosixTransport> transport, Ref<Address> address, Ref<Client::Listener> listener)
-   : transport_(transport),
-     address_(address),
+  ConnectOp(Ref<PosixConnection> conn, Ref<Client::Listener> listener, EventFlags events)
+   : conn_(conn),
      listener_(listener),
-     connected_(false)
+     events_(events)
   {
   }
 
   void AddRef() override {
-    ke::Refcounted<PosixClient>::AddRef();
+    ke::Refcounted<ConnectOp>::AddRef();
   }
   void Release() override {
-    ke::Refcounted<PosixClient>::Release();
+    ke::Refcounted<ConnectOp>::Release();
+  }
+  void Cancel() override {
+    // Check that the pump hasn't shutdown.
+    if (!conn_->pump() || conn_->Closed())
+      return;
+
+    // This should throw an error through the poller, which we just ignore.
+    conn_->Close();
+    Finish();
   }
 
-  PassRef<IOError> Attach(Poller *poller) {
-    Ref<IOError> error;
-    int rv = connect(transport_->fd(), address_->SockAddr(), address_->SockAddrLen());
-    if (rv == 0) {
-      if ((error = poller->Attach(transport_, listener_, Events_None)) == nullptr)
-        return nullptr;
-    } else {
-      if (errno != EINPROGRESS)
-        error = new PosixError();
-    }
-
-    // If we got no errors, but no connection, hijack the write event to find
-    // when connect() finishes.
-    if (!error)
-      error = poller->Attach(transport_, this, Event_Write);
-
-    if (error) {
-      // On error we immediately close the descriptor.
-      transport_->Close();
-      return error;
-    }
-    return nullptr;
+  // Both of these are unexpected, but will terminate the connect operation
+  // anyway.
+  void OnError(Ref<Transport> transport, Ref<IOError> error) override {
+    reportError(error);
+  }
+  void OnHangup(Ref<Transport> transport) override {
+    reportError(eUnknownHangup);
   }
 
   void OnWriteReady(Ref<Transport> transport) override {
-    assert(transport == transport_);
+    assert(transport == conn_);
 
     int errn;
     socklen_t len = sizeof(errn);
     int rv = getsockopt(transport->FileDescriptor(), SOL_SOCKET, SO_ERROR, &errn, &len);
     if (rv == -1 || errn != 0) {
-      Ref<IOError> error = new PosixError(rv == -1 ? errno : errn);
-      listener_->OnError(transport, error);
-      transport->Close();
+      reportError(new PosixError(rv == -1 ? errno : errn));
       return;
     }
 
-    transport_->changeListener(listener_);
-    listener_->OnConnect(transport_);
+    if (events_ & Event_Sticky) {
+      if (Ref<IOError> error = conn_->pump()->ChangeStickyEvents(conn_, events_)) {
+        reportError(error);
+        return;
+      }
+    } else {
+      // We can't change edge-triggered events... but we've just consumed the
+      // write event, so we all need to do is trigger the read if requested.
+      if (events_ & Event_Read) {
+        if (Ref<IOError> error = conn_->pump()->onReadWouldBlock(conn_)) {
+          reportError(error);
+          return;
+        }
+      }
+    }
+
+    conn_->changeListener(listener_);
+    listener_->OnConnect(conn_);
+    Finish();
+  }
+
+  void reportError(Ref<IOError> error) {
+    conn_->Close();
+    listener_->OnConnectFailed(error);
+    Finish();
+  }
+
+  void Finish() {
+    conn_ = nullptr;
+    listener_ = nullptr;
   }
 
  private:
-  Ref<PosixTransport> transport_;
-  Ref<Address> address_;
+  Ref<PosixConnection> conn_;
   Ref<Client::Listener> listener_;
+  EventFlags events_;
 };
-#endif
 
 static inline PassRef<IOError>
 ConnectionForAddress(Ref<PosixConnection> *outp, Ref<Address> address, Protocol protocol)
@@ -288,11 +307,19 @@ Client::Create(Result *result, Ref<Poller> poller,
 
   int rv = connect(conn->fd(), address->SockAddr(), address->SockAddrLen());
   if (rv == 0) {
+    if ((result->error = poller->Attach(conn, listener, events)) != nullptr)
+      return false;
     result->connection = conn;
     return true;
   }
 
-  //Ref<ConnectionListener> listener = new ConnectionListener(
+  EventFlags sticky = (events & Event_Sticky) ? Event_Sticky : Events_None;
+
+  Ref<ConnectOp> op = new ConnectOp(conn, listener, events);
+  if ((result->error = poller->Attach(conn, op, Event_Write | sticky)) != nullptr)
+    return false;
+
+  result->operation = op;
   return true;
 }
 

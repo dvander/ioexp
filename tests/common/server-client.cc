@@ -68,6 +68,7 @@ class ClientHelper
   }
 
   void OnConnect(Ref<Connection> connection) override {
+    Conn = connection;
   }
   void OnConnectFailed(Ref<IOError> error) override {
     Terminated = true;
@@ -79,12 +80,6 @@ class ClientHelper
   }
   void OnHangup(Ref<Transport> transport) override {
     Terminated = true;
-  }
-
-  void Reset() {
-    Conn = nullptr;
-    Terminated = false;
-    Error = nullptr;
   }
 
   bool Terminated;
@@ -125,11 +120,19 @@ TestServerClient::Run()
   }
 
   if (!client.connection) {
+    if (!check(client.operation != nullptr, "should have an op ptr"))
+      return false;
     if (!check_error(poller_->Poll(), "initial poll"))
       return false;
+
+    if (!cli_helper->Conn) {
+      if (!check(!cli_helper->Terminated, "should not get connect failed"))
+        return false;
+    }
+
     // If we didn't get both events, try for another poll.
     if (!cli_helper->Conn || !srv_helper->Client) {
-      if (!check_error(poller_->Poll(kSafeTimeout), "additional poll"))
+      if (!check_error(poller_->Poll(), "additional poll"))
         return false;
     }
 
@@ -144,9 +147,18 @@ TestServerClient::Run()
   server->Close();
 
   // Try to connect again. We should get an error.
-  if (!Client::Create(&client, poller_, address, Protocol::TCP, cli_helper)) {
-    check_error(client.error, "client error");
-    return false;
+  cli_helper = new ClientHelper();
+  if (Client::Create(&client, poller_, address, Protocol::TCP, cli_helper)) {
+    if (!check(client.connection == nullptr, "should not have connected"))
+      return false;
+
+    if (!check_error(poller_->Poll(), "poll for error"))
+      return false;
+
+    if (!check(cli_helper->Terminated, "should have a terminated connection"))
+      return false;
+    if (!check(cli_helper->Error != nullptr, "should have gotten an error"))
+      return false;
   }
 
   return true;

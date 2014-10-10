@@ -305,7 +305,10 @@ class Connection : public ke::IRefcounted
 class Operation : public ke::IRefcounted
 {
  public:
-  // Cancel the operation.
+  // Cancel the operation. Once Cancel() is called, it is guaranteed that an
+  // in-progress connection operation will not complete. If the operation has
+  // already completed, it will still fire an OnConnect event. Otherwise, no
+  // callbacks will fire (including OnConnectFailed).
   virtual void Cancel() = 0;
 };
 
