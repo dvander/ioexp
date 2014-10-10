@@ -84,7 +84,7 @@ class Address : public ke::Refcounted<Address>
   virtual const struct sockaddr *SockAddr() const = 0;
 
   // Returns the length of the sockaddr.
-  virtual size_t SockAddrLen() = 0;
+  virtual socklen_t SockAddrLen() = 0;
 
   // Create a new Address of the same address family, and provide a mutable
   // buffer to initialize its sockaddr. This is intended for callers of
@@ -93,6 +93,9 @@ class Address : public ke::Refcounted<Address>
   // lenp for the buffer length, not SockAddrLen(), which requires an
   // initialized buffer.
   virtual PassRef<Address> NewBuffer(struct sockaddr **outp, socklen_t *lenp) = 0;
+
+  // Copy the address.
+  virtual PassRef<Address> Copy();
 
   // These functions can be used for casting to derived types, without using
   // dynamic_cast. The |toX| variants will assert if they're the wrong type.
@@ -139,7 +142,7 @@ class IPv4Address : public IPAddress
   const struct sockaddr *SockAddr() const override {
     return reinterpret_cast<const sockaddr *>(&buf_);
   }
-  size_t SockAddrLen() override {
+  socklen_t SockAddrLen() override {
     return sizeof(buf_);
   }
   int Port() const override {
@@ -173,7 +176,7 @@ class IPv6Address : public IPAddress
   const struct sockaddr *SockAddr() const override {
     return reinterpret_cast<const sockaddr *>(&buf_);
   }
-  size_t SockAddrLen() override {
+  socklen_t SockAddrLen() override {
     return sizeof(buf_);
   }
   int Port() const override {
@@ -211,7 +214,7 @@ class UnixAddress : public Address
   }
 
   PassRef<Address> NewBuffer(struct sockaddr **outp, socklen_t *lenp) override;
-  size_t SockAddrLen() override;
+  socklen_t SockAddrLen() override;
   ke::AString ToString() override;
 
  private:
@@ -219,37 +222,38 @@ class UnixAddress : public Address
 };
 #endif
 
+enum class Action
+{
+  // Instructs the I/O layer to try and consume another connection, as long
+  // as it would not block to do so. Note that, like all edge-triggered APIs,
+  // this risks starving other I/O operations on the same thread.
+  Again,
+
+  // Instructs the I/O layer to defer any pending connection notifications
+  // until the next call to Poll().
+  DeferNext
+};
+
+enum class Severity {
+  // Some kind of network error occurred accepting a connection, but the
+  // server socket is otherwise fine.
+  Warning,
+
+  // Either ENOMEM or EMFILE. The server is likely to keep receiving this
+  // error frequently, and the application should consider shutting down.
+  Severe,
+
+  // The server socket can no longer be used, and no more connections will
+  // be received. This usually indicates the socket has been closed.
+  Fatal
+};
+
 // A server accepts network connections on a connection-oriented port.
 class Server :
   public IPollable,
   public ke::IRefcounted
 {
  public:
-  enum class Action {
-    // Instructs the I/O layer to try and consume another connection, as long
-    // as it would not block to do so. Note that, like all edge-triggered APIs,
-    // risks starving other I/O operations on the same thread.
-    Again,
-
-    // Instructs the I/O layer to defer any pending connection notifications
-    // until the next call to Poll().
-    DeferNext
-  };
-
-  enum class Severity {
-    // Some kind of network error occurred accepting a connection, but the
-    // server socket is otherwise fine.
-    Warning,
-
-    // Either ENOMEM or EMFILE. The server is likely to keep receiving this
-    // error frequently, and the application should consider shutting down.
-    Severe,
-
-    // The server socket can no longer be used, and no more connections will
-    // be received. This usually indicates the socket has been closed.
-    Fatal
-  };
-
   // Events on this listener can be fired upon polling.
   class Listener : public ke::IRefcounted
   {
@@ -327,9 +331,6 @@ class Client
   };
 
   struct Result {
-    // Set when an error occurs.
-    Ref<IOError> error;
-
     // If the connection completed immediately, this will be set.
     Ref<Connection> connection;
 
@@ -339,8 +340,7 @@ class Client
   };
 
   // Initiates a connection to an address and returns the result of the
-  // operation. If the operation fails to initiate, false is returned and
-  // |result->error| is set.
+  // operation. If the operation fails to initiate, error is returned.
   //
   // If a connection could be immediately established, the connection object
   // is returned in |result|. Otherwise the |operation| field is set, and
@@ -354,7 +354,7 @@ class Client
   //  protocol:  The protocol to use for the socket.
   //  listener:  Listener to receive event callbacks.
   //  events:    The initial events to listen for once the client has connected.
-  static bool Create(
+  static Ref<IOError> Create(
     Result *result,
     Ref<Poller> poller,
     Ref<Address> address,
@@ -363,6 +363,42 @@ class Client
     EventFlags events = Events_None
   );
 };
+
+// Use this to listen for datagram sockets.
+class DatagramListener
+{
+ public:
+  // Called when a datagram is received. The buffer and address are retained
+  // for re-use by the listener, and may be re-used as soon as the callback
+  // is finished. To save them, they must be copied.
+  virtual void OnReceive(void *buffer, size_t bytes, Ref<Address> address) = 0;
+
+  // See the comments on Server::Listener.
+  virtual void OnError(Ref<IOError> error, Severity severity) = 0;
+
+  // Recommended UDP packet size.
+  static const size_t kDefaultDatagramSize = 1472;
+
+  // Maximum theoretical sizes of UDP packets.
+  static const size_t kMaxUDPv4PacketSize = 65507;
+  static const size_t kMaxUDPv6PacketSize = 65535;
+
+  // Create a receiver for datagrams and attach it to the given poller. The
+  // maximum sizes that will be received is specified by maxPacketSize and
+  // maxOutOfBandSize (these default to the maximum udp packet size).
+  static Ref<IOError> Create(
+    Ref<Poller> poller,
+    Ref<Address> address,
+    Protocol protocol,
+    Ref<DatagramListener> listener,
+    size_t maxPacketSize = kDefaultDatagramSize,
+    size_t maxOutOfBandSize = kDefaultDatagramSize 
+  );
+};
+
+// Access for creating raw sockets. The address version creates a bound socket.
+AMIO_LINK Ref<IOError> CreateSocket(Ref<Transport> *outp, AddressFamily af, Protocol proto);
+AMIO_LINK Ref<IOError> CreateSocket(Ref<Transport> *outp, Ref<Address> address, Protocol proto);
 
 // Creates a connection to an address. This call will block while making the
 // connection (if the protocol is connection-oriented). Afterward, the

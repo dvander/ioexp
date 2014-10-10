@@ -36,19 +36,19 @@ class ServerHelper
   void Release() override {
     ke::Refcounted<ServerHelper>::Release();
   }
-  Server::Action Accept(Ref<Transport> client, Ref<Address> address) override {
+  Action Accept(Ref<Transport> client, Ref<Address> address) override {
     assert(!Client);
     Client = client;
-    return Server::Action::DeferNext;
+    return Action::DeferNext;
   }
-  void OnError(Ref<IOError> error, Server::Severity severity) override {
+  void OnError(Ref<IOError> error, Severity severity) override {
     Error = error;
     ErrorLevel = severity;
   }
 
   Ref<Transport> Client;
   Ref<IOError> Error;
-  Server::Severity ErrorLevel;
+  Severity ErrorLevel;
 };
 
 class ClientHelper
@@ -114,8 +114,9 @@ TestServerClient::Run()
 
   Ref<ClientHelper> cli_helper = new ClientHelper();
   Client::Result client;
-  if (!Client::Create(&client, poller_, address, Protocol::TCP, cli_helper)) {
-    check_error(client.error, "client error");
+  if (!check_error(Client::Create(&client, poller_, address, Protocol::TCP, cli_helper),
+                   "create client"))
+  {
     return false;
   }
 
@@ -148,7 +149,7 @@ TestServerClient::Run()
 
   // Try to connect again. We should get an error.
   cli_helper = new ClientHelper();
-  if (Client::Create(&client, poller_, address, Protocol::TCP, cli_helper)) {
+  if (!Client::Create(&client, poller_, address, Protocol::TCP, cli_helper)) {
     if (!check(client.connection == nullptr, "should not have connected"))
       return false;
 

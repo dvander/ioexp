@@ -53,7 +53,7 @@ UnixAddress::Resolve(Ref<IOError> *error, const char *address)
   return out;
 }
 
-size_t
+socklen_t
 UnixAddress::SockAddrLen()
 {
   return SUN_LEN(&buf_);
@@ -288,7 +288,7 @@ ConnectionForAddress(Ref<PosixConnection> *outp, Ref<Address> address, Protocol 
   }
 }
 
-bool
+Ref<IOError>
 Client::Create(Result *result, Ref<Poller> poller,
                Ref<Address> address, Protocol protocol,
                Ref<Client::Listener> listener, EventFlags events)
@@ -296,31 +296,27 @@ Client::Create(Result *result, Ref<Poller> poller,
   *result = Result();
 
   Ref<PosixConnection> conn;
-  if (Ref<IOError> error = ConnectionForAddress(&conn, address, protocol)) {
-    result->error = error;
-    return false;
-  }
-  if (Ref<IOError> error = conn->Setup()) {
-    result->error = error;
-    return false;
-  }
+  if (Ref<IOError> error = ConnectionForAddress(&conn, address, protocol))
+    return error;
+  if (Ref<IOError> error = conn->Setup())
+    return error;
 
   int rv = connect(conn->fd(), address->SockAddr(), address->SockAddrLen());
   if (rv == 0) {
-    if ((result->error = poller->Attach(conn, listener, events)) != nullptr)
-      return false;
+    if (Ref<IOError> error = poller->Attach(conn, listener, events))
+      return error;
     result->connection = conn;
-    return true;
+    return nullptr;
   }
 
   EventFlags sticky = (events & Event_Sticky) ? Event_Sticky : Events_None;
 
   Ref<ConnectOp> op = new ConnectOp(conn, listener, events);
-  if ((result->error = poller->Attach(conn, op, Event_Write | sticky)) != nullptr)
-    return false;
+  if (Ref<IOError> error = poller->Attach(conn, op, Event_Write | sticky))
+    return error;
 
   result->operation = op;
-  return true;
+  return nullptr;
 }
 
 Ref<IOError> AMIO_LINK

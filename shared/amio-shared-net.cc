@@ -82,6 +82,18 @@ STUB_CAST(IPv4Address);
 STUB_CAST(IPv6Address);
 STUB_CAST(UnixAddress);
 
+PassRef<Address>
+Address::Copy()
+{
+  struct sockaddr *buffer;
+  socklen_t buflen;
+  Ref<Address> addr = this->NewBuffer(&buffer, &buflen);
+
+  assert(buflen < addr->SockAddrLen());
+  memcpy(buffer, addr->SockAddr(), ke::Min(addr->SockAddrLen(), buflen));
+  return addr;
+}
+
 IPv4Address::IPv4Address()
 {
 }
