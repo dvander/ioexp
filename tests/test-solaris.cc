@@ -14,13 +14,13 @@ using namespace ke;
 using namespace amio;
 
 static PassRef<IOError>
-create_devpoll(Poller **outp)
+create_devpoll(Ref<Poller> *outp)
 {
   return PollerFactory::CreateDevPollImpl(outp);
 }
 
 static PassRef<IOError>
-create_port(Poller **outp)
+create_port(Ref<Poller> *outp)
 {
   return PollerFactory::CreateCompletionPort(outp);
 }

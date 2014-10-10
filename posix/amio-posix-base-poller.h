@@ -47,6 +47,7 @@ class PosixPoller
 
   void reportHup(Ref<PosixTransport> transport);
   void reportError(Ref<PosixTransport> transport);
+  void reportError(Ref<PosixTransport> transport, Ref<IOError> error);
 };
 
 } // namespace amio

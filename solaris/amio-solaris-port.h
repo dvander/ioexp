@@ -39,22 +39,28 @@ class PortImpl : public PosixPoller
   PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
   void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
+  PassRef<IOError> ChangeStickyEvents(Ref<Transport> transport, EventFlags eventMask) override;
 
   PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
   PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
   void unhook(PosixTransport *transport) override;
 
  private:
-  PassRef<IOError> addEventFlags(size_t slot, int fd, int flags);
+  bool isFdChanged(size_t slot) const {
+    return fds_[slot].modified == generation_;
+  }
+
+  inline PassRef<IOError> addEventFlags(size_t slot, int flags);
+
+  template <int inFlag>
+  inline void handleEvent(size_t slot);
 
  private:
   struct PollData {
     Ref<PosixTransport> transport;
     volatile size_t modified;
 
-    // Tracking for port_associate().
     int events;
-    bool associated;
   };
 
   int port_;

@@ -40,10 +40,16 @@ PosixPoller::reportHup(Ref<PosixTransport> transport)
 void
 PosixPoller::reportError(Ref<PosixTransport> transport)
 {
+  reportError(transport, eUnknownHangup);
+}
+
+void
+PosixPoller::reportError(Ref<PosixTransport> transport, Ref<IOError> error)
+{
   // Get a local copy of the listener before we wipe it out.
   Ref<StatusListener> listener = transport->listener();
   unhook(transport);
-  listener->OnError(transport, eUnknownHangup);
+  listener->OnError(transport, error);
 }
 
 PassRef<PosixTransport>

@@ -20,29 +20,29 @@ using namespace ke;
 using namespace amio;
 
 PassRef<IOError>
-PollerFactory::CreateDevPollImpl(Poller **outp, size_t maxEventsPerPoll)
+PollerFactory::CreateDevPollImpl(Ref<Poller> *outp, size_t maxEventsPerPoll)
 {
-  AutoPtr<DevPollImpl> poller(new DevPollImpl());
+  Ref<DevPollImpl> poller(new DevPollImpl());
   Ref<IOError> error = poller->Initialize(maxEventsPerPoll);
   if (error)
     return error;
-  *outp = poller.take();
+  *outp = poller;
   return nullptr;
 }
 
 PassRef<IOError>
-PollerFactory::CreateCompletionPort(Poller **outp, size_t maxEventsPerPoll)
+PollerFactory::CreateCompletionPort(Ref<Poller> *outp, size_t maxEventsPerPoll)
 {
-  AutoPtr<PortImpl> poller(new PortImpl());
+  Ref<PortImpl> poller(new PortImpl());
   Ref<IOError> error = poller->Initialize(maxEventsPerPoll);
   if (error)
     return error;
-  *outp = poller.take();
+  *outp = poller;
   return nullptr;
 }
 
 PassRef<IOError>
-PollerFactory::CreatePoller(Poller **outp)
+PollerFactory::CreatePoller(Ref<Poller> *outp)
 {
   return PollerFactory::CreateSelectImpl(outp);
 }

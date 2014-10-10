@@ -187,6 +187,8 @@ class AMIO_LINK Poller : public ke::IRefcounted
   // triggered listeners. If the transport was not attached with Event_Sticky,
   // this will fail. The new event mask must contain Event_Sticky.
   //
+  // The resulting event set is undefined on error.
+  //
   // NB: This is provided so embedders can simulate edge-triggering as needed;
   // thus, there is no edge-triggered equivalent.
   virtual PassRef<IOError> ChangeStickyEvents(Ref<Transport> transport, EventFlags eventMask) = 0;

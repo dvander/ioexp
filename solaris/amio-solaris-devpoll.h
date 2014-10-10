@@ -38,6 +38,7 @@ class DevPollImpl : public PosixPoller
   PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
   void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
+  PassRef<IOError> ChangeStickyEvents(Ref<Transport> transport, EventFlags eventMask) override;
 
   PassRef<IOError> addEventFlag(int fd, int flag);
   PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
@@ -45,9 +46,13 @@ class DevPollImpl : public PosixPoller
   void unhook(PosixTransport *transport) override;
 
  private:
-  bool isEventValid(int fd) const {
-    return size_t(fd) < fds_.length() && fds_[fd].modified != generation_;
+  bool isFdChanged(int fd) const {
+    return fds_[fd].modified == generation_;
   }
+  template <int inFlag>
+  inline PassRef<IOError> addEventFlag(PosixTransport *transport);
+  template <int inFlag>
+  inline void handleEvent(int fd);
 
  private:
   struct PollData {
@@ -56,8 +61,9 @@ class DevPollImpl : public PosixPoller
     struct pollfd pe;
 
     // devpoll doesn't have edge triggering, and modifying it is kind of
-    // slow, so instead we use a sticky bit here.
-    int stickied;
+    // annoying, so instead we flag POLLIN/POLLOUT here. We also stick a
+    // custom flag here to indicate level-triggering.
+    int flags;
   };
 
   int dp_;
