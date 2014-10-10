@@ -370,7 +370,7 @@ class DatagramListener
  public:
   // Called when a datagram is received. The buffer and address are retained
   // for re-use by the listener, and may be re-used as soon as the callback
-  // is finished. To save them, they must be copied.
+  // is finished. To save them beyond the callback's scope, they must be copied.
   virtual void OnReceive(void *buffer, size_t bytes, Ref<Address> address) = 0;
 
   // See the comments on Server::Listener.
