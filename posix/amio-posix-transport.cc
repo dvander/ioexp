@@ -59,18 +59,18 @@ PosixTransport::Read(IOResult *result, void *buffer, size_t maxlength)
       return true;
     }
 
-    result->Error = new PosixError();
+    result->error = new PosixError();
     return false;
   }
 
-  result->Completed = true;
+  result->completed = true;
   if (rv == 0) {
     pump_->unhook(this);
-    result->Ended = true;
+    result->ended = true;
     return true;
   }
 
-  result->Bytes = size_t(rv);
+  result->bytes = size_t(rv);
   return true;
 }
 
@@ -87,12 +87,12 @@ PosixTransport::Write(IOResult *result, const void *buffer, size_t maxlength)
       return true;
     }
 
-    result->Error = new PosixError();
+    result->error = new PosixError();
     return false;
   }
 
-  result->Completed = true;
-  result->Bytes = size_t(rv);
+  result->completed = true;
+  result->bytes = size_t(rv);
   return true;
 }
 

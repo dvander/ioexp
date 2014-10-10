@@ -16,11 +16,11 @@ using namespace ke;
 PassRef<IOError>
 PollerFactory::CreateKqueueImpl(Ref<Poller> *outp, size_t maxEventsPerPoll)
 {
-  AutoPtr<KqueueImpl> poller(new KqueueImpl(maxEventsPerPoll));
+  Ref<KqueueImpl> poller(new KqueueImpl(maxEventsPerPoll));
   Ref<IOError> error = poller->Initialize();
   if (error)
     return error;
-  *outp = poller.take();
+  *outp = poller;
   return nullptr;
 }
 

@@ -273,8 +273,8 @@ class Server :
   //
   // Backlog specifies the maximum number of pending connections that can be
   // enqueued. Use 0 for the default (usually 128).
-  static PassRef<Server> Create(
-    Ref<IOError> *error,
+  static PassRef<IOError> Create(
+    Ref<Server> *server,
     Ref<Address> address,
     Protocol protocol,
     Ref<Server::Listener> listener,
@@ -302,6 +302,13 @@ class Connection : public ke::IRefcounted
   virtual PassRef<Transport> GetTransport() = 0;
 };
 
+class Operation : public ke::IRefcounted
+{
+ public:
+  // Cancel the operation.
+  virtual void Cancel() = 0;
+};
+
 class Client
 {
  public:
@@ -316,23 +323,36 @@ class Client
     virtual void OnConnectFailed(Ref<IOError> error) = 0;
   };
 
+  struct Result {
+    // Set when an error occurs.
+    Ref<IOError> error;
+
+    // If the connection completed immediately, this will be set.
+    Ref<Connection> connection;
+
+    // If the connection is being processed asynchronously, this object allows
+    // it to be cancelled.
+    Ref<Operation> operation;
+  };
+
   // Initiates a connection to an address and returns the result of the
-  // operation. If the operation fails to initiate, then |null| is returned
-  // and |error| is set.
+  // operation. If the operation fails to initiate, false is returned and
+  // |result->error| is set.
   //
   // If a connection could be immediately established, the connection object
-  // is returned. Otherwise null is returned, |error| is unset, and either
-  // OnConnect or OnConnectFailed will fire with a later Poll().
+  // is returned in |result|. Otherwise the |operation| field is set, and
+  // unless cancelled, OnConnect or OnConnectFailed will fire with a later
+  // Poll().
   //
   // Parameters:
-  //  error:     If Create() returns null, this will be set to an error object.
+  //  result:    Result output.
   //  poller:    The poller to attach to.
   //  address:   The address to connect to upon attaching.
   //  protocol:  The protocol to use for the socket.
   //  listener:  Listener to receive event callbacks.
   //  events:    The initial events to listen for once the client has connected.
-  static PassRef<Connection> Create(
-    Ref<IOError> *error,
+  static bool Create(
+    Result *result,
     Ref<Poller> poller,
     Ref<Address> address,
     Protocol protocol,
@@ -344,7 +364,7 @@ class Client
 // Creates a connection to an address. This call will block while making the
 // connection (if the protocol is connection-oriented). Afterward, the
 // transport is in non-blocking mode so it can be used with Pollers.
-AMIO_LINK Ref<Transport> ConnectTo(Ref<IOError> *error, Protocol protocol, Ref<Address> address);
+AMIO_LINK Ref<IOError> ConnectTo(Ref<Connection> *outp, Protocol protocol, Ref<Address> address);
 
 #if defined(KE_WINDOWS)
 // Creates a socket connected to an address. This call will block.

@@ -210,12 +210,12 @@ TestPipes::test_read_write()
     IOResult r;
     if (!check(reader_->Read(&r, buffer, sizeof(buffer)), "read from pipe"))
       return false;
-    if (!r.Completed) {
+    if (!r.completed) {
       got_read_ = false;
       continue;
     }
 
-    nread += r.Bytes;
+    nread += r.bytes;
     if (nread == sizeof(buffer))
       break;
   }
@@ -231,7 +231,7 @@ TestPipes::test_read_write()
   IOResult r;
   if (!check(reader_->Read(&r, buffer, sizeof(buffer)), "read from closed pipe"))
     return false;
-  if (!check(r.Ended, "should have gotten EOF from read pipe"))
+  if (!check(r.ended, "should have gotten EOF from read pipe"))
     return false;
 
   return true;
@@ -259,7 +259,7 @@ TestPipes::test_poll_write_close()
   char buffer[1];
   if (!check(reader_->Read(&r, buffer, sizeof(buffer)), "read from closed pipe"))
     return false;
-  if (!check(r.Ended, "should have gotten EOF from read pipe"))
+  if (!check(r.ended, "should have gotten EOF from read pipe"))
     return false;
 
   return true;
@@ -289,7 +289,7 @@ TestPipes::test_poll_read_close()
   char buffer[1] = {0};
   if (!check(!writer_->Write(&r, buffer, sizeof(buffer)), "write to closed pipe"))
     return false;
-  if (!check(r.Error != nullptr, "got error"))
+  if (!check(r.error != nullptr, "got error"))
     return false;
 
   return true;
@@ -304,7 +304,7 @@ TestPipes::write(const char *msg, size_t len)
     IOResult r;
     if (!check(writer_->Write(&r, msg + nwritten, len - nwritten), "write to pipe"))
       return false;
-    nwritten += r.Bytes;
+    nwritten += r.bytes;
     if (nwritten == len)
       break;
 

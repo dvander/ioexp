@@ -17,11 +17,6 @@
 # define EPOLLRDHUP 0x2000
 #endif
 
-static const uint32_t kEmulateReadET  = 0x1;
-static const uint32_t kEmulateWriteET = 0x2;
-static const uint32_t kReadStickied   = 0x4;
-static const uint32_t kWriteStickied  = 0x8;
-
 using namespace ke;
 using namespace amio;
 

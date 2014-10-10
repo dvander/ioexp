@@ -54,11 +54,11 @@ PollerFactory::CreateSelectImpl(Ref<Poller> *outp)
 PassRef<IOError>
 PollerFactory::CreatePollImpl(Ref<Poller> *outp)
 {
-  AutoPtr<PollImpl> poller(new PollImpl());
+  Ref<PollImpl> poller(new PollImpl());
   Ref<IOError> error = poller->Initialize();
   if (error)
     return error;
-  *outp = poller.take();
+  *outp = poller;
   return nullptr;
 }
 #endif

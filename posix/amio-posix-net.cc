@@ -269,38 +269,51 @@ ConnectionForAddress(Ref<PosixConnection> *outp, Ref<Address> address, Protocol 
   }
 }
 
-PassRef<Connection>
-Client::Create(Ref<IOError> *error, Ref<Poller> poller,
+bool
+Client::Create(Result *result, Ref<Poller> poller,
                Ref<Address> address, Protocol protocol,
                Ref<Client::Listener> listener, EventFlags events)
 {
+  *result = Result();
+
   Ref<PosixConnection> conn;
-  if ((*error = ConnectionForAddress(&conn, address, protocol)))
-    return nullptr;
-  if ((*error = conn->Setup()) != nullptr)
-    return nullptr;
-
-  return nullptr;
-}
-
-Ref<Transport> AMIO_LINK
-amio::net::ConnectTo(Ref<IOError> *error, Protocol protocol, Ref<Address> address)
-{
-  int fd;
-  if ((*error = SocketForAddress(&fd, address, protocol)))
-    return nullptr;
-
-  int rv = connect(fd, address->SockAddr(), address->SockAddrLen());
-  if (rv == -1) {
-    *error = new PosixError();
-    close(fd);
-    return nullptr;
+  if (Ref<IOError> error = ConnectionForAddress(&conn, address, protocol)) {
+    result->error = error;
+    return false;
+  }
+  if (Ref<IOError> error = conn->Setup()) {
+    result->error = error;
+    return false;
   }
 
-  Ref<PosixTransport> transport = new PosixTransport(fd, kTransportDefaultFlags);
-  if ((*error = transport->Setup()) != nullptr)
-    return nullptr;
-  return transport;
+  int rv = connect(conn->fd(), address->SockAddr(), address->SockAddrLen());
+  if (rv == 0) {
+    result->connection = conn;
+    return true;
+  }
+
+  //Ref<ConnectionListener> listener = new ConnectionListener(
+  return true;
+}
+
+Ref<IOError> AMIO_LINK
+amio::net::ConnectTo(Ref<Connection> *outp, Protocol protocol, Ref<Address> address)
+{
+  Ref<PosixConnection> conn;
+  Ref<IOError> error = ConnectionForAddress(&conn, address, protocol);
+  if (error)
+    return error;
+
+  int rv = connect(conn->fd(), address->SockAddr(), address->SockAddrLen());
+  if (rv == -1)
+    return new PosixError();
+
+  // Make the connection non-blocking now that we've connected.
+  if ((error = conn->Setup()))
+    return error;
+
+  *outp = conn;
+  return nullptr;
 }
 
 class PosixServer
@@ -428,8 +441,8 @@ class PosixServer
   bool closing_;
 };
 
-PassRef<Server>
-Server::Create(Ref<IOError> *error,
+PassRef<IOError>
+Server::Create(Ref<Server> *outp,
                Ref<Address> address, Protocol protocol,
                Ref<Server::Listener> listener,
                unsigned backlog)
@@ -439,45 +452,37 @@ Server::Create(Ref<IOError> *error,
     case Protocol::Stream:
       break;
     default:
-      *error = eUnsupportedProtocol;
-      return nullptr;
+      return eUnsupportedProtocol;
   }
   if (!backlog)
     backlog = SOMAXCONN;
 
   int fd;
-  if ((*error = SocketForAddress(&fd, address, protocol)))
-    return nullptr;
+  if (Ref<IOError> error = SocketForAddress(&fd, address, protocol))
+    return error;
 
   Ref<PosixTransport> transport = new PosixTransport(fd, kTransportDefaultFlags);
-  if ((*error = transport->Setup()) != nullptr)
+  if (Ref<IOError> error = transport->Setup())
     return nullptr;
 
   // Before we bind, set SO_REUSEADDR.
   int enable = 1;
-  if (setsockopt(transport->fd(), SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) == -1) {
-    *error = new PosixError();
-    return nullptr;
-  }
+  if (setsockopt(transport->fd(), SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) == -1)
+    return new PosixError();
 
   // Bind and listen.
-  if (bind(transport->fd(), address->SockAddr(), address->SockAddrLen()) == -1) {
-    *error = new PosixError();
-    return nullptr;
-  }
-  if (listen(transport->fd(), backlog) == -1) {
-    *error = new PosixError();
-    return nullptr;
-  }
+  if (bind(transport->fd(), address->SockAddr(), address->SockAddrLen()) == -1)
+    return new PosixError();
+  if (listen(transport->fd(), backlog) == -1)
+    return new PosixError();
 
   struct sockaddr *buf;
   socklen_t buflen;
   Ref<Address> local = address->NewBuffer(&buf, &buflen);
 
-  if (getsockname(transport->fd(), buf, &buflen) == -1) {
-    *error = new PosixError();
-    return nullptr;
-  }
+  if (getsockname(transport->fd(), buf, &buflen) == -1)
+    return new PosixError();
 
-  return new PosixServer(transport, listener, local);
+  *outp = new PosixServer(transport, listener, local);
+  return nullptr;
 }

@@ -104,9 +104,12 @@ TestServerClient::Run()
     return false;
 
   Ref<ServerHelper> srv_helper = new ServerHelper();
-  Ref<Server> server = Server::Create(&error, local, Protocol::TCP, srv_helper);
-  if (!check_error(error, "create tcp server on any port"))
+  Ref<Server> server;
+  if (!check_error(Server::Create(&server, local, Protocol::TCP, srv_helper),
+                   "create tcp server on any port"))
+  {
     return false;
+  }
   if (!check_error(poller_->Attach(server), "attach server to poller"))
     return false;
 
@@ -115,11 +118,13 @@ TestServerClient::Run()
     return false;
 
   Ref<ClientHelper> cli_helper = new ClientHelper();
-  Ref<Connection> conn = Client::Create(&error, poller_, address, Protocol::TCP, cli_helper);
-  if (!check_error(error, "create client"))
+  Client::Result client;
+  if (!Client::Create(&client, poller_, address, Protocol::TCP, cli_helper)) {
+    check_error(client.error, "client error");
     return false;
+  }
 
-  if (!conn) {
+  if (!client.connection) {
     if (!check_error(poller_->Poll(), "initial poll"))
       return false;
     // If we didn't get both events, try for another poll.
@@ -139,9 +144,10 @@ TestServerClient::Run()
   server->Close();
 
   // Try to connect again. We should get an error.
-  conn = Client::Create(&error, poller_, address, Protocol::TCP, cli_helper);
-  if (!check_error(error, "create client"))
+  if (!Client::Create(&client, poller_, address, Protocol::TCP, cli_helper)) {
+    check_error(client.error, "client error");
     return false;
+  }
 
   return true;
 }
