@@ -24,6 +24,16 @@ static const size_t kMaxUnixPath = sizeof(struct sockaddr_un) -
                                    offsetof(struct sockaddr_un, sun_path) - 1;
 static Ref<GenericError> sUnixNameTooLong = new GenericError("unix name is too long (max: %d)", int(kMaxUnixPath));
 
+UnixAddress::UnixAddress()
+{
+}
+
+UnixAddress::UnixAddress(struct sockaddr **buf, socklen_t *buflen)
+{
+  *buf = reinterpret_cast<struct sockaddr *>(&buf_);
+  *buflen = sizeof(buf_);
+}
+
 PassRef<UnixAddress>
 UnixAddress::Resolve(Ref<IOError> *error, const char *address)
 {
@@ -33,10 +43,10 @@ UnixAddress::Resolve(Ref<IOError> *error, const char *address)
   }
 
   Ref<UnixAddress> out = new UnixAddress;
-  out->sun_.sun_family = AF_UNIX;
-  CopyString(out->sun_.sun_path, sizeof(out->sun_.sun_path), address);
+  out->buf_.sun_family = AF_UNIX;
+  CopyString(out->buf_.sun_path, sizeof(out->buf_.sun_path), address);
 #if defined(SOCKADDR_LEN)
-  out->sun_.sun_len = SUN_LEN(&out->sun_);
+  out->buf_.sun_len = SUN_LEN(&out->buf_);
 #endif
 
   return out;
@@ -45,13 +55,22 @@ UnixAddress::Resolve(Ref<IOError> *error, const char *address)
 size_t
 UnixAddress::SockAddrLen()
 {
-  return SUN_LEN(&sun_);
+  return SUN_LEN(&buf_);
 }
 
 AString
 UnixAddress::ToString()
 {
-  return AString(sun_.sun_path);
+  return AString(buf_.sun_path);
+}
+
+PassRef<Address>
+UnixAddress::NewBuffer(sockaddr **outp, socklen_t *lenp)
+{
+  Ref<UnixAddress> addr = new UnixAddress();
+  *outp = reinterpret_cast<sockaddr *>(&addr->buf_);
+  *lenp = sizeof(addr->buf_);
+  return addr;
 }
 
 static Ref<IOError>
@@ -109,9 +128,59 @@ SocketForAddress(int *outp, Ref<Address> address, Protocol protocol)
   return nullptr;
 }
 
+class PosixConnection
+ : public Connection,
+   public PosixTransport
+{
+ public:
+  PosixConnection(int fd, TransportFlags flags)
+   : PosixTransport(fd, flags)
+  {}
+
+  void AddRef() override {
+    PosixTransport::AddRef();
+  }
+  void Release() override {
+    PosixTransport::Release();
+  }
+  PassRef<Transport> GetTransport() override {
+    return this;
+  }
+};
+
+template <typename T>
+class PosixConnectionT : public PosixConnection
+{
+ public:
+  PosixConnectionT(int fd, TransportFlags flags)
+   : PosixConnection(fd, flags)
+  {}
+
+  PassRef<IOError> RemoteAddress(Ref<Address> *outp) override {
+    struct sockaddr *buf;
+    socklen_t buflen;
+    Ref<T> addr = new T(&buf, &buflen);
+    if (getsockname(this->fd(), buf, &buflen) == -1)
+      return new PosixError();
+    *outp = addr;
+    return nullptr;
+  }
+
+  PassRef<IOError> LocalAddress(Ref<Address> *outp) override {
+    struct sockaddr *buf;
+    socklen_t buflen;
+    Ref<T> addr = new T(&buf, &buflen);
+    if (getpeername(this->fd(), buf, &buflen) == -1)
+      return new PosixError();
+    *outp = addr;
+    return nullptr;
+  }
+};
+
+#if 0
 class PosixClient
-  : public virtual Client,
-    public virtual StatusListener
+ : public StatusListener,
+   public ke::Refcounted<PosixClient>
 {
  public:
   PosixClient(Ref<PosixTransport> transport, Ref<Address> address, Ref<Client::Listener> listener)
@@ -120,6 +189,13 @@ class PosixClient
      listener_(listener),
      connected_(false)
   {
+  }
+
+  void AddRef() override {
+    ke::Refcounted<PosixClient>::AddRef();
+  }
+  void Release() override {
+    ke::Refcounted<PosixClient>::Release();
   }
 
   PassRef<IOError> Attach(Poller *poller) {
@@ -163,33 +239,48 @@ class PosixClient
     listener_->OnConnect(transport_);
   }
 
-  PassRef<Transport> GetTransport() override {
-    return transport_;
-  }
-  bool Connected() override {
-    return connected_;
-  }
-
  private:
   Ref<PosixTransport> transport_;
   Ref<Address> address_;
   Ref<Client::Listener> listener_;
-  bool connected_;
 };
+#endif
 
-PassRef<Client>
-Client::Create(Ref<IOError> *error,
-               Ref<Address> address, Protocol protocol,
-               Ref<Client::Listener> listener)
+static inline PassRef<IOError>
+ConnectionForAddress(Ref<PosixConnection> *outp, Ref<Address> address, Protocol protocol)
 {
   int fd;
-  if ((*error = SocketForAddress(&fd, address, protocol)))
+  Ref<IOError> error = SocketForAddress(&fd, address, protocol);
+  if (error)
+    return error;
+
+  switch (address->Family()) {
+    case AddressFamily::IPv4:
+      *outp = new PosixConnectionT<IPv4Address>(fd, kTransportDefaultFlags);
+      return nullptr;
+    case AddressFamily::IPv6:
+      *outp = new PosixConnectionT<IPv6Address>(fd, kTransportDefaultFlags);
+      return nullptr;
+    case AddressFamily::Unix:
+      *outp = new PosixConnectionT<UnixAddress>(fd, kTransportDefaultFlags);
+      return nullptr;
+    default:
+      return eUnsupportedAddressFamily;
+  }
+}
+
+PassRef<Connection>
+Client::Create(Ref<IOError> *error, Ref<Poller> poller,
+               Ref<Address> address, Protocol protocol,
+               Ref<Client::Listener> listener, EventFlags events)
+{
+  Ref<PosixConnection> conn;
+  if ((*error = ConnectionForAddress(&conn, address, protocol)))
+    return nullptr;
+  if ((*error = conn->Setup()) != nullptr)
     return nullptr;
 
-  Ref<PosixTransport> transport = new PosixTransport(fd, kTransportDefaultFlags);
-  if ((*error = transport->Setup()) != nullptr)
-    return nullptr;
-  return new PosixClient(transport, address, listener);
+  return nullptr;
 }
 
 Ref<Transport> AMIO_LINK
@@ -214,32 +305,127 @@ amio::net::ConnectTo(Ref<IOError> *error, Protocol protocol, Ref<Address> addres
 
 class PosixServer
  : public Server,
-   public StatusListener
+   public StatusListener,
+   public ke::Refcounted<PosixServer>
 {
  public:
   PosixServer(Ref<PosixTransport> transport, Ref<Server::Listener> listener, Ref<Address> address)
    : transport_(transport),
      listener_(listener),
-     address_(address)
+     address_(address),
+     closing_(false)
   {
   }
 
+  void AddRef() override {
+    ke::Refcounted<PosixServer>::AddRef();
+  }
+  void Release() override {
+    ke::Refcounted<PosixServer>::Release();
+  }
+
   PassRef<IOError> Attach(Poller *poller) override {
-    assert(false);
-    return nullptr;
+    return poller->Attach(transport_, this, Event_Read|Event_Sticky);
+  }
+
+  void OnReadReady(Ref<Transport> server) override {
+    assert(server == transport_);
+
+    sockaddr *addr;
+    socklen_t addrlen, orig_addrlen;
+    Ref<Address> remote = address_->NewBuffer(&addr, &orig_addrlen);
+
+    size_t failures = 0;
+    while (failures < 10) {
+      addrlen = orig_addrlen;
+      int rv = accept(transport_->fd(), addr, &addrlen);
+      if (rv == -1) {
+        switch (errno) {
+#if defined(KE_LINUX)
+          // Linux documents these as being similar to EAGAIN.
+          case ENETDOWN:
+          case EPROTO:
+          case ENOPROTOOPT:
+          case EHOSTDOWN:
+          case ENONET:
+          case EHOSTUNREACH:
+          case EOPNOTSUPP:
+          case ENETUNREACH:
+            // Soft error.
+            failures++;
+            listener_->OnError(new PosixError(errno), Severity::Warning);
+            continue;
+#endif
+          case EBADF:
+          case EINVAL:
+            Close();
+            listener_->OnError(new PosixError(errno), Severity::Fatal);
+            return;
+          case EMFILE:
+          case ENFILE:
+          case ENOBUFS:
+          case ENOMEM:
+            listener_->OnError(new PosixError(errno), Severity::Severe);
+            return;
+          case EAGAIN:
+#if EAGAIN != EWOULDBLOCK
+          case EWOULDBLOCK:
+#endif
+            return;
+          default:
+            // Any other error, we don't retry.
+            listener_->OnError(new PosixError(errno), Severity::Warning);
+            return;
+        }
+
+        // Should not reach here, but just in case.
+        return;
+      }
+
+      // Wrap the new conection in a transport.
+      Ref<PosixTransport> connection = new PosixTransport(rv, kTransportDefaultFlags);
+      Ref<IOError> error = connection->Setup();
+      if (error) {
+        failures++;
+        listener_->OnError(error, Severity::Warning);
+        continue;
+      }
+
+      // If the user wants more connections, loop back. Otherwise, we return.
+      // Since we're level-triggered here we'll accept more connections next
+      // poll.
+      if (listener_->Accept(connection, remote) == Action::DeferNext)
+        return;
+    }
+  }
+  void OnHangup(Ref<Transport> server) override {
+    assert(server == transport_);
+    if (closing_)
+      return;
+    listener_->OnError(eUnknownHangup, Severity::Fatal);
+  }
+  void OnError(Ref<Transport> server, Ref<IOError> error) override {
+    assert(server == transport_);
+    if (closing_)
+      return;
+    listener_->OnError(error, Severity::Fatal);
   }
 
   PassRef<Address> ListenAddress() override {
     return address_;
   }
   void Close() override {
+    if (closing_)
+      return;
     transport_->Close();
+    closing_ = true;
   }
 
  private:
   Ref<PosixTransport> transport_;
   Ref<Server::Listener> listener_;
   Ref<Address> address_;
+  bool closing_;
 };
 
 PassRef<Server>
@@ -267,6 +453,14 @@ Server::Create(Ref<IOError> *error,
   if ((*error = transport->Setup()) != nullptr)
     return nullptr;
 
+  // Before we bind, set SO_REUSEADDR.
+  int enable = 1;
+  if (setsockopt(transport->fd(), SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) == -1) {
+    *error = new PosixError();
+    return nullptr;
+  }
+
+  // Bind and listen.
   if (bind(transport->fd(), address->SockAddr(), address->SockAddrLen()) == -1) {
     *error = new PosixError();
     return nullptr;
@@ -276,5 +470,14 @@ Server::Create(Ref<IOError> *error,
     return nullptr;
   }
 
-  return new PosixServer(transport, listener, address);
+  struct sockaddr *buf;
+  socklen_t buflen;
+  Ref<Address> local = address->NewBuffer(&buf, &buflen);
+
+  if (getsockname(transport->fd(), buf, &buflen) == -1) {
+    *error = new PosixError();
+    return nullptr;
+  }
+
+  return new PosixServer(transport, listener, local);
 }

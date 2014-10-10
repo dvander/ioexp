@@ -16,7 +16,9 @@
 
 namespace amio {
 
-class PosixPoller : public Poller
+class PosixPoller
+  : public Poller,
+    public ke::Refcounted<PosixPoller>
 {
  public:
   // Notifies the pump that the socket would block reading.
@@ -35,6 +37,13 @@ class PosixPoller : public Poller
     Ref<Transport> baseTransport,
     EventFlags eventMask
   );
+
+  void AddRef() override {
+    ke::Refcounted<PosixPoller>::AddRef();
+  }
+  void Release() override {
+    ke::Refcounted<PosixPoller>::Release();
+  }
 
   void reportHup(Ref<PosixTransport> transport);
   void reportError(Ref<PosixTransport> transport);

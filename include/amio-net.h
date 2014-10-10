@@ -47,6 +47,12 @@ enum class Protocol
   Unknown
 };
 
+// Forward declarations for Address types.
+class IPAddress;
+class IPv4Address;
+class IPv6Address;
+class UnixAddress;
+
 // Abstract representation of a network address.
 class Address : public ke::Refcounted<Address>
 {
@@ -75,18 +81,54 @@ class Address : public ke::Refcounted<Address>
   virtual ke::AString ToString() = 0;
 
   // Return a sockaddr representing the address.
-  virtual const struct sockaddr *SockAddr() = 0;
+  virtual const struct sockaddr *SockAddr() const = 0;
 
   // Returns the length of the sockaddr.
   virtual size_t SockAddrLen() = 0;
+
+  // Create a new Address of the same address family, and provide a mutable
+  // buffer to initialize its sockaddr. This is intended for callers of
+  // accept(). Since the buffer is left uninitialized, it is the user's
+  // responsibility to make sure it is filled. Note that callers should use
+  // lenp for the buffer length, not SockAddrLen(), which requires an
+  // initialized buffer.
+  virtual PassRef<Address> NewBuffer(struct sockaddr **outp, socklen_t *lenp) = 0;
+
+  // These functions can be used for casting to derived types, without using
+  // dynamic_cast. The |toX| variants will assert if they're the wrong type.
+  // The |asX| variants will return nullptr.
+  virtual PassRef<IPAddress> asIPAddress();
+  virtual PassRef<IPv4Address> asIPv4Address();
+  virtual PassRef<IPv6Address> asIPv6Address();
+  virtual PassRef<UnixAddress> asUnixAddress();
+
+  PassRef<IPAddress> toIPAddress();
+  PassRef<IPv4Address> toIPv4Address();
+  PassRef<IPv6Address> toIPv6Address();
+  PassRef<UnixAddress> toUnixAddress();
+};
+
+// Either an IPv4 or an IPv6 address.
+class IPAddress : public Address
+{
+ public:
+  // Return the port this address is on; 0 if none.
+  virtual int Port() const = 0;
+
+  virtual PassRef<IPAddress> asIPAddress() override {
+    return this;
+  }
 };
 
 // An IPv4 address.
-class IPv4Address : public Address
+class IPv4Address : public IPAddress
 {
  public:
-  // Resolve an IPv4 address. AMIO cannot guarantee non-blocking resolution
-  // ability, so take care: Resolve() can block.
+  IPv4Address();
+  IPv4Address(struct sockaddr **buf, socklen_t *buflen);
+
+  // Resolve an IPv4 address. AMIO cannot guarantee non-blocking resolution,
+  // so take care: Resolve() can block.
   //
   // Returns nullptr with no error if the address could not be resolved.
   static PassRef<IPv4Address> Resolve(Ref<IOError> *error, const char *address);
@@ -94,22 +136,33 @@ class IPv4Address : public Address
   AddressFamily Family() override {
     return AddressFamily::IPv4;
   }
-  const struct sockaddr *SockAddr() override {
-    return reinterpret_cast<sockaddr *>(&sin_);
+  const struct sockaddr *SockAddr() const override {
+    return reinterpret_cast<const sockaddr *>(&buf_);
   }
   size_t SockAddrLen() override {
-    return sizeof(sin_);
+    return sizeof(buf_);
   }
+  int Port() const override {
+    return buf_.sin_port;
+  }
+  virtual PassRef<IPv4Address> asIPv4Address() override {
+    return this;
+  }
+
+  PassRef<Address> NewBuffer(struct sockaddr **outp, socklen_t *lenp) override;
   ke::AString ToString() override;
 
  private:
-  struct sockaddr_in sin_;
+  struct sockaddr_in buf_;
 };
 
 // An IPv6 address.
-class IPv6Address : public Address
+class IPv6Address : public IPAddress
 {
  public:
+  IPv6Address();
+  IPv6Address(struct sockaddr **buf, socklen_t *buflen);
+
   // Resolve an IPv6 address. AMIO cannot guarantee non-blocking resolution
   // ability, so take care: Resolve() can block.
   static PassRef<IPv6Address> Resolve(Ref<IOError> *error, const char *address);
@@ -117,16 +170,24 @@ class IPv6Address : public Address
   AddressFamily Family() override {
     return AddressFamily::IPv6;
   }
-  const struct sockaddr *SockAddr() override {
-    return reinterpret_cast<sockaddr *>(&sin_);
+  const struct sockaddr *SockAddr() const override {
+    return reinterpret_cast<const sockaddr *>(&buf_);
   }
   size_t SockAddrLen() override {
-    return sizeof(sin_);
+    return sizeof(buf_);
   }
+  int Port() const override {
+    return buf_.sin6_port;
+  }
+  virtual PassRef<IPv6Address> asIPv6Address() override {
+    return this;
+  }
+
+  PassRef<Address> NewBuffer(struct sockaddr **outp, socklen_t *lenp) override;
   ke::AString ToString() override;
 
  private:
-  struct sockaddr_in6 sin_;
+  struct sockaddr_in6 buf_;
 };
 
 #if defined(KE_POSIX)
@@ -134,26 +195,34 @@ class IPv6Address : public Address
 class UnixAddress : public Address
 {
  public:
+  UnixAddress();
+  UnixAddress(struct sockaddr **buf, socklen_t *buflen);
+
   static PassRef<UnixAddress> Resolve(Ref<IOError> *error, const char *address);
 
   AddressFamily Family() override {
     return AddressFamily::Unix;
   }
-  const struct sockaddr *SockAddr() override {
-    return reinterpret_cast<sockaddr *>(&sun_);
+  const struct sockaddr *SockAddr() const override {
+    return reinterpret_cast<const sockaddr *>(&buf_);
   }
+  virtual PassRef<UnixAddress> asUnixAddress() override {
+    return this;
+  }
+
+  PassRef<Address> NewBuffer(struct sockaddr **outp, socklen_t *lenp) override;
   size_t SockAddrLen() override;
   ke::AString ToString() override;
 
  private:
-  struct sockaddr_un sun_;
+  struct sockaddr_un buf_;
 };
 #endif
 
 // A server accepts network connections on a connection-oriented port.
 class Server :
   public IPollable,
-  public ke::VirtualRefcountedThreadsafe
+  public ke::IRefcounted
 {
  public:
   enum class Action {
@@ -167,25 +236,34 @@ class Server :
     DeferNext
   };
 
+  enum class Severity {
+    // Some kind of network error occurred accepting a connection, but the
+    // server socket is otherwise fine.
+    Warning,
+
+    // Either ENOMEM or EMFILE. The server is likely to keep receiving this
+    // error frequently, and the application should consider shutting down.
+    Severe,
+
+    // The server socket can no longer be used, and no more connections will
+    // be received. This usually indicates the socket has been closed.
+    Fatal
+  };
+
   // Events on this listener can be fired upon polling.
-  class Listener : public ke::VirtualRefcountedThreadsafe
+  class Listener : public ke::IRefcounted
   {
    public:
+    virtual ~Listener()
+    {}
+
     // Called when a new connection is available.
-    virtual Action Accept(Ref<amio::Transport> *transport, Ref<Address> address) {
+    virtual Action Accept(Ref<amio::Transport> transport, Ref<Address> address) {
       return Action::DeferNext;
     }
 
     // Called when an error occurs accepting connections.
-    virtual void OnError(Ref<IOError> error)
-    {}
-
-    // Called on a fatal error - such as ENOMEM (out of memory) or EMFILE,
-    // which indicates there are no more socket descriptors available.
-    //
-    // Nothing happens on a fatal error, it is just a hint for the application
-    // that the error may happen repeatedly and may require shutdown.
-    virtual void OnFatalError(Ref<IOError> error)
+    virtual void OnError(Ref<IOError> error, Severity severity)
     {}
   };
 
@@ -211,9 +289,20 @@ class Server :
   virtual void Close() = 0;
 };
 
+class Connection : public ke::IRefcounted
+{
+ public:
+  // Return the local address of the connection.
+  virtual PassRef<IOError> LocalAddress(Ref<Address> *outp) = 0;
+
+  // Return the remote address of the connection.
+  virtual PassRef<IOError> RemoteAddress(Ref<Address> *outp) = 0;
+
+  // Return the underlying transport.
+  virtual PassRef<Transport> GetTransport() = 0;
+};
+
 class Client
- : public IPollable,
-   public ke::VirtualRefcountedThreadsafe
 {
  public:
   // Events on this listener can be fired upon polling.
@@ -221,44 +310,35 @@ class Client
   {
    public:
     // Called when the socket is connected.
-    virtual void OnConnect(Ref<amio::Transport> transport)
-    {}
+    virtual void OnConnect(Ref<Connection> transport) = 0;
+
+    // Called if the socket fails to connect.
+    virtual void OnConnectFailed(Ref<IOError> error) = 0;
   };
 
-  // Create a socket that can be polled for when it has connected to the given
-  // address. After attaching to a poller, use Connected() to determine if the
-  // socket has immediately connected. If it has, then OnConnect() will not be
-  // called. If it has not, then OnConnect or OnError will be called during a
-  // Poll() operation to indicate success or failure. If failure is indicated,
-  // the underlying transport is closed after notification.
+  // Initiates a connection to an address and returns the result of the
+  // operation. If the operation fails to initiate, then |null| is returned
+  // and |error| is set.
   //
-  // Client::Create() should be used for any type of client-oriented transport,
-  // even connection-less protocols.
-  //
-  // It is not necessary to hold onto Client objects; they are only used to
-  // communicate initial connection state.
+  // If a connection could be immediately established, the connection object
+  // is returned. Otherwise null is returned, |error| is unset, and either
+  // OnConnect or OnConnectFailed will fire with a later Poll().
   //
   // Parameters:
   //  error:     If Create() returns null, this will be set to an error object.
+  //  poller:    The poller to attach to.
   //  address:   The address to connect to upon attaching.
   //  protocol:  The protocol to use for the socket.
   //  listener:  Listener to receive event callbacks.
-  static PassRef<Client> Create(
+  //  events:    The initial events to listen for once the client has connected.
+  static PassRef<Connection> Create(
     Ref<IOError> *error,
+    Ref<Poller> poller,
     Ref<Address> address,
     Protocol protocol,
-    Ref<Client::Listener> listener
+    Ref<Client::Listener> listener,
+    EventFlags events = Events_None
   );
-
-  // Returns the underlying transport being used by the connection operation.
-  // This is guaranteed to be available immediately (i.e. it is not delayed
-  // until attaching). However, it is immediately closed if the connection
-  // fails (pending notifications if the error was asynchronous).
-  virtual PassRef<Transport> GetTransport() = 0;
-
-  // Returns true if the socket has connected; false otherwise. No connection
-  // attempt is made until the client has been attached to a poller.
-  virtual bool Connected() = 0;
 };
 
 // Creates a connection to an address. This call will block while making the

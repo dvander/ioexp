@@ -14,7 +14,7 @@ using namespace amio;
 using namespace ke;
 
 PassRef<IOError>
-PollerFactory::CreateKqueueImpl(Poller **outp, size_t maxEventsPerPoll)
+PollerFactory::CreateKqueueImpl(Ref<Poller> *outp, size_t maxEventsPerPoll)
 {
   AutoPtr<KqueueImpl> poller(new KqueueImpl(maxEventsPerPoll));
   Ref<IOError> error = poller->Initialize();
@@ -25,7 +25,7 @@ PollerFactory::CreateKqueueImpl(Poller **outp, size_t maxEventsPerPoll)
 }
 
 PassRef<IOError>
-PollerFactory::CreatePoller(Poller **outp)
+PollerFactory::CreatePoller(Ref<Poller> *outp)
 {
   return CreateKqueueImpl(outp, kDefaultMaxEventsPerPoll);
 }

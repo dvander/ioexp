@@ -47,6 +47,8 @@ class Test : public VirtualRefcounted
    : name_(name)
   {
   }
+  virtual ~Test()
+  {}
 
   virtual bool Run() = 0;
 
@@ -140,8 +142,8 @@ check_error(Ref<IOError> error, const char *fmt, ...)
 void SetupTests();
 void SetupNetworkTests();
 
-#if !defined(_WIN32)
-typedef PassRef<IOError> (*CreatePoller_t)(Poller **outp);
+#if !defined(KE_WINDOWS)
+typedef PassRef<IOError> (*CreatePoller_t)(Ref<Poller> *outp);
 #endif
 
 static const int kSafeTimeout = 20;

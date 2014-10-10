@@ -61,13 +61,10 @@ class KEConfig:
         cfg.cxxflags += ['-fvisibility-inlines-hidden']
         if have_clang or (have_gcc and cxx.minorVersion >= 6):
           cfg.cflags += ['-Wno-narrowing']
-        if (have_gcc and cxx.minorVersion >= 7) or (have_clang and cxx.majorVersion >= 4):
-          cfg.cxxflags += ['-Wno-delete-non-virtual-dtor']
 
       cfg.cxxflags += [
         '-fno-exceptions',
         '-fno-threadsafe-statics',
-        '-Wno-non-virtual-dtor',
         '-Wno-overloaded-virtual',
       ]
 
@@ -80,8 +77,6 @@ class KEConfig:
         '-fno-exceptions',
         '-fno-rtti',
         '-fno-threadsafe-statics',
-        '-Wno-non-virtual-dtor',
-        '-Wno-overloaded-virtual',
         '-Wno-invalid-offsetof',
       ]
 

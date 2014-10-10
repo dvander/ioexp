@@ -28,7 +28,7 @@ def Configure(binary):
   binary.sources += [
     'shared/amio-errors.cc',
     'shared/amio-string.cc',
-    'shared/amio-net.cc',
+    'shared/amio-shared-net.cc',
   ]
 
   if builder.target_platform != 'windows':

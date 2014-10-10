@@ -64,7 +64,7 @@ class TestPipes
 
  private:
   CreatePoller_t constructor_;
-  AutoPtr<Poller> poller_;
+  Ref<Poller> poller_;
   Ref<Transport> reader_;
   Ref<Transport> writer_;
   bool got_read_;

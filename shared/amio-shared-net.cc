@@ -68,6 +68,30 @@ try_getaddrinfo(const char *node, const char *service,
 }
 #endif
 
+#define STUB_CAST(Kind)               \
+  PassRef<Kind> Address::to##Kind() { \
+    assert(as##Kind());               \
+    return as##Kind();                \
+  }                                   \
+  PassRef<Kind> Address::as##Kind() { \
+    return nullptr;                   \
+  }
+
+STUB_CAST(IPAddress);
+STUB_CAST(IPv4Address);
+STUB_CAST(IPv6Address);
+STUB_CAST(UnixAddress);
+
+IPv4Address::IPv4Address()
+{
+}
+
+IPv4Address::IPv4Address(struct sockaddr **buf, socklen_t *buflen)
+{
+  *buf = reinterpret_cast<struct sockaddr *>(&buf_);
+  *buflen = sizeof(buf_);
+}
+
 PassRef<IPv4Address>
 IPv4Address::Resolve(Ref<IOError> *error, const char *address)
 {
@@ -96,19 +120,19 @@ IPv4Address::Resolve(Ref<IOError> *error, const char *address)
   if (*error)
     return nullptr;
 
-  if (info->ai_addrlen != sizeof(IPv4Address::sin_)) {
+  if (info->ai_addrlen != sizeof(IPv4Address::buf_)) {
     freeaddrinfo(info);
     *error = sInvalidIPv4Length;
     return nullptr;
   }
 
   Ref<IPv4Address> ipv4 = new IPv4Address;
-  memcpy(&ipv4->sin_, info->ai_addr, sizeof(IPv4Address::sin_));
+  memcpy(&ipv4->buf_, info->ai_addr, sizeof(IPv4Address::buf_));
   freeaddrinfo(info);
 
 #if defined(KE_SOLARIS)
   if (port)
-    ipv4->sin_.sin_port = htons(port);
+    ipv4->buf_.sin_port = htons(port);
 #endif
   return ipv4;
 }
@@ -117,15 +141,34 @@ AString
 IPv4Address::ToString()
 {
   char tmp[255];
-  if (!inet_ntop(AF_INET, &sin_.sin_addr, tmp, sizeof(tmp)))
+  if (!inet_ntop(AF_INET, &buf_.sin_addr, tmp, sizeof(tmp)))
     return AString("unknown");
 
   char buffer[255];
-  if (sin_.sin_port) {
-    FormatArgs(buffer, sizeof(buffer), "%s:%d", tmp, ntohs(sin_.sin_port));
+  if (buf_.sin_port) {
+    FormatArgs(buffer, sizeof(buffer), "%s:%d", tmp, ntohs(buf_.sin_port));
     return AString(buffer);
   }
   return AString(tmp);
+}
+
+PassRef<Address>
+IPv4Address::NewBuffer(sockaddr **outp, socklen_t *lenp)
+{
+  Ref<IPv4Address> addr = new IPv4Address();
+  *outp = reinterpret_cast<sockaddr *>(&addr->buf_);
+  *lenp = sizeof(addr->buf_);
+  return addr;
+}
+
+IPv6Address::IPv6Address()
+{
+}
+
+IPv6Address::IPv6Address(struct sockaddr **buf, socklen_t *buflen)
+{
+  *buf = reinterpret_cast<struct sockaddr *>(&buf_);
+  *buflen = sizeof(buf_);
 }
 
 PassRef<IPv6Address>
@@ -149,7 +192,7 @@ IPv6Address::Resolve(Ref<IOError> *error, const char *address)
   }
 
   Ref<IPv6Address> ipv6 = new IPv6Address;
-  memset(&ipv6->sin_, 0, sizeof(ipv6->sin_));
+  memset(&ipv6->buf_, 0, sizeof(ipv6->buf_));
 
 #if defined(KE_SOLARIS)
   // Workaround a bug on Solaris.
@@ -166,18 +209,18 @@ IPv6Address::Resolve(Ref<IOError> *error, const char *address)
   if (*error)
     return nullptr;
 
-  if (info->ai_addrlen != sizeof(IPv6Address::sin_)) {
+  if (info->ai_addrlen != sizeof(IPv6Address::buf_)) {
     freeaddrinfo(info);
     *error = sInvalidIPv6Length;
     return nullptr;
   }
 
-  memcpy(&ipv6->sin_, info->ai_addr, sizeof(IPv6Address::sin_));
+  memcpy(&ipv6->buf_, info->ai_addr, sizeof(IPv6Address::buf_));
   freeaddrinfo(info);
 
 #if defined(KE_SOLARIS)
   if (port)
-    ipv6->sin_.sin6_port = htons(port);
+    ipv6->buf_.sin6_port = htons(port);
 #endif
   return ipv6;
 }
@@ -186,13 +229,22 @@ AString
 IPv6Address::ToString()
 {
   char tmp[255];
-  if (!inet_ntop(AF_INET6, &sin_.sin6_addr, tmp, sizeof(tmp)))
+  if (!inet_ntop(AF_INET6, &buf_.sin6_addr, tmp, sizeof(tmp)))
     return AString("unknown");
 
   char buffer[255];
-  if (sin_.sin6_port) {
-    FormatArgs(buffer, sizeof(buffer), "[%s]:%d", tmp, ntohs(sin_.sin6_port));
+  if (buf_.sin6_port) {
+    FormatArgs(buffer, sizeof(buffer), "[%s]:%d", tmp, ntohs(buf_.sin6_port));
     return AString(buffer);
   }
   return AString(tmp);
+}
+
+PassRef<Address>
+IPv6Address::NewBuffer(sockaddr **outp, socklen_t *lenp)
+{
+  Ref<IPv6Address> addr = new IPv6Address();
+  *outp = reinterpret_cast<sockaddr *>(&addr->buf_);
+  *lenp = sizeof(addr->buf_);
+  return addr;
 }

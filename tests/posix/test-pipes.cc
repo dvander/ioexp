@@ -56,7 +56,7 @@ TestPipes::reset()
 bool
 TestPipes::Run()
 {
-  Ref<IOError> error = constructor_(poller_.address());
+  Ref<IOError> error = constructor_(&poller_);
   if (!check_error(error, "create poller"))
     return false;
 

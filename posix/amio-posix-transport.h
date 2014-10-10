@@ -23,7 +23,9 @@ namespace amio {
 class PosixPoller;
 
 // A PosixTransport wraps a Unix file descriptor.
-class PosixTransport : public Transport
+class PosixTransport
+  : public Transport,
+    public ke::Refcounted<PosixTransport>
 {
  public:
   PosixTransport(int fd, TransportFlags flags);
@@ -42,6 +44,12 @@ class PosixTransport : public Transport
   }
   bool Closed() const override {
     return fd_ == -1;
+  }
+  void AddRef() override {
+    ke::Refcounted<PosixTransport>::AddRef();
+  }
+  void Release() override {
+    ke::Refcounted<PosixTransport>::Release();
   }
 
   // Setup the descriptor, if it hasn't been set up already.

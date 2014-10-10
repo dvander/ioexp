@@ -9,7 +9,7 @@
 //
 #include <amio.h>
 #include <amio-net.h>
-#include "testing.h"
+#include "../testing.h"
 
 using namespace ke;
 using namespace amio;

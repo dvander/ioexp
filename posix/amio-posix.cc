@@ -44,7 +44,7 @@ TransportFactory::CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp, T
 }
 
 PassRef<IOError>
-PollerFactory::CreateSelectImpl(Poller **outp)
+PollerFactory::CreateSelectImpl(Ref<Poller> *outp)
 {
   *outp = new SelectImpl();
   return nullptr;
@@ -52,7 +52,7 @@ PollerFactory::CreateSelectImpl(Poller **outp)
 
 #if defined(AMIO_POLL_AVAILABLE)
 PassRef<IOError>
-PollerFactory::CreatePollImpl(Poller **outp)
+PollerFactory::CreatePollImpl(Ref<Poller> *outp)
 {
   AutoPtr<PollImpl> poller(new PollImpl());
   Ref<IOError> error = poller->Initialize();

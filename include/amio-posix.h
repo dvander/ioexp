@@ -42,7 +42,7 @@ struct AMIO_LINK IOResult
 
 // Describes a low-level transport mechanism used in Posix. This is essentially
 // a wrapper around a file descriptor.
-class AMIO_LINK Transport : public ke::Refcounted<Transport>
+class AMIO_LINK Transport : public ke::IRefcounted
 {
  public:
   virtual ~Transport()
@@ -94,7 +94,7 @@ class AMIO_LINK Transport : public ke::Refcounted<Transport>
 };
 
 // Used to receive notifications about status changes.
-class AMIO_LINK StatusListener : public ke::VirtualRefcounted
+class AMIO_LINK StatusListener : public ke::IRefcounted
 {
  public:
   virtual ~StatusListener()
@@ -138,7 +138,7 @@ class IPollable
 };
 
 // A poller is responsible for polling for events. It is not thread-safe.
-class AMIO_LINK Poller
+class AMIO_LINK Poller : public ke::IRefcounted
 {
  public:
   virtual ~Poller()
@@ -209,16 +209,16 @@ class AMIO_LINK PollerFactory
  public:
   // Create a message pump using the best available polling technique. The pump
   // should be freed with |delete| or immediately stored in a ke::AutoPtr.
-  static PassRef<IOError> CreatePoller(Poller **outp);
+  static PassRef<IOError> CreatePoller(Ref<Poller> *outp);
 
   // Create a message pump based on select(). Although Windows supports select(),
   // AMIO uses IO Completion Ports which supports much more of the Windows API.
   // For now, select() pumps are not available on Windows.
-  static PassRef<IOError> CreateSelectImpl(Poller **outp);
+  static PassRef<IOError> CreateSelectImpl(Ref<Poller> *outp);
 
 #if defined(AMIO_POLL_AVAILABLE)
   // Create a message pump based on POSIX poll().
-  static PassRef<IOError> CreatePollImpl(Poller **outp);
+  static PassRef<IOError> CreatePollImpl(Ref<Poller> *outp);
 #endif
 
 #if defined(KE_LINUX)
@@ -228,7 +228,7 @@ class AMIO_LINK PollerFactory
   // epoll() is chosen by CreatePoller by default for Linux 2.5.44+, as it is
   // considered the most efficient polling mechanism and has native edge-
   // triggering.
-  static PassRef<IOError> CreateEpollImpl(Poller **outp, size_t maxEventsPerPoll = 0);
+  static PassRef<IOError> CreateEpollImpl(Ref<Poller> *outp, size_t maxEventsPerPoll = 0);
 #elif defined(KE_BSD)
   // Create a message pump based on kqueue(). By default maxEventsPerPoll is
   // 256, when used through CreatePoller(). Use 0 for the default.
@@ -237,11 +237,11 @@ class AMIO_LINK PollerFactory
   // considered the most efficient polling mechanism and has native edge-
   // triggering). It is assumed to exist by default on Darwin, FreeBSD, and
   // OpenBSD.
-  static PassRef<IOError> CreateKqueueImpl(Poller **outp, size_t maxEventsPerPoll = 0);
+  static PassRef<IOError> CreateKqueueImpl(Ref<Poller> *outp, size_t maxEventsPerPoll = 0);
 #elif defined(KE_SOLARIS)
   // Create a message pump based on /dev/poll. By default maxEventsPerPoll is
   // 256. Use 0 for the default. CreatePoller() never chooses /dev/poll.
-  static PassRef<IOError> CreateDevPollImpl(Poller **outp, size_t maxEventsPerPoll = 0);
+  static PassRef<IOError> CreateDevPollImpl(Ref<Poller> *outp, size_t maxEventsPerPoll = 0);
 
   // Create a message pump based on IO Completion Ports. By default
   // maxEventsPerPoll is 256, when used through CreatePoller(). Use 0 for the
@@ -256,7 +256,7 @@ class AMIO_LINK PollerFactory
   // devices, AMIO is intended for IPC and sockets). Additionally, since it
   // would (probably) require transport-level locking, this poller is not
   // thread-safe even though the underlying port is.
-  static PassRef<IOError> CreateCompletionPort(Poller **outp, size_t maxEventsPoll = 0);
+  static PassRef<IOError> CreateCompletionPort(Ref<Poller> *outp, size_t maxEventsPoll = 0);
 #endif
 };
 
