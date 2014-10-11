@@ -364,6 +364,7 @@ class Client
   );
 };
 
+#if 0
 // Use this to listen for datagram sockets.
 class DatagramListener
 {
@@ -395,6 +396,7 @@ class DatagramListener
     size_t maxOutOfBandSize = kDefaultDatagramSize 
   );
 };
+#endif
 
 // Access for creating raw sockets. The address version creates a bound socket.
 AMIO_LINK Ref<IOError> CreateSocket(Ref<Transport> *outp, AddressFamily af, Protocol proto);

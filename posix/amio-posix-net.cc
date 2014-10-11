@@ -374,8 +374,7 @@ Ref<IOError> AMIO_LINK
 amio::net::ConnectTo(Ref<Connection> *outp, Protocol protocol, Ref<Address> address)
 {
   Ref<PosixConnection> conn;
-  Ref<IOError> error = ConnectionForAddress(&conn, address, protocol);
-  if (error)
+  if (Ref<IOError> error = ConnectionForAddress(&conn, address, protocol))
     return error;
 
   int rv = connect(conn->fd(), address->SockAddr(), address->SockAddrLen());
@@ -383,7 +382,7 @@ amio::net::ConnectTo(Ref<Connection> *outp, Protocol protocol, Ref<Address> addr
     return new PosixError();
 
   // Make the connection non-blocking now that we've connected.
-  if ((error = conn->Setup()))
+  if (Ref<IOError> error = conn->Setup())
     return error;
 
   *outp = conn;
