@@ -72,9 +72,3 @@ AutoDisableSigpipe::~AutoDisableSigpipe()
 {
   signal(SIGPIPE, prev_handler_);
 }
-
-PassRef<IOError>
-Poller::Attach(IPollable *pollable)
-{
-  return pollable->Attach(this);
-}

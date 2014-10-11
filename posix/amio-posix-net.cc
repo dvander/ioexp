@@ -410,10 +410,6 @@ class PosixServer
     ke::Refcounted<PosixServer>::Release();
   }
 
-  PassRef<IOError> Attach(Poller *poller) override {
-    return poller->Attach(transport_, this, Event_Read|Event_Sticky);
-  }
-
   void OnReadReady(Ref<Transport> server) override {
     assert(server == transport_);
 
@@ -516,6 +512,7 @@ class PosixServer
 
 PassRef<IOError>
 Server::Create(Ref<Server> *outp,
+               Ref<Poller> poller,
                Ref<Address> address, Protocol protocol,
                Ref<Server::Listener> listener,
                unsigned backlog)
@@ -547,6 +544,10 @@ Server::Create(Ref<Server> *outp,
   if (getsockname(transport->fd(), buf, &buflen) == -1)
     return new PosixError();
 
-  *outp = new PosixServer(transport, listener, local);
+  Ref<PosixServer> server = new PosixServer(transport, listener, local);
+  if (Ref<IOError> error = poller->Attach(transport, server, Event_Read|Event_Sticky))
+    return error;
+
+  *outp = server;
   return nullptr;
 }
