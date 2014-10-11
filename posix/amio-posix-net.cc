@@ -75,12 +75,12 @@ UnixAddress::NewBuffer(sockaddr **outp, socklen_t *lenp)
 }
 
 static Ref<IOError>
-SocketForAddress(int *outp, Ref<Address> address, Protocol protocol)
+SocketForAddress(int *outp, AddressFamily inaf, Protocol protocol)
 {
   *outp = -1;
 
   int af;
-  switch (address->Family()) {
+  switch (inaf) {
     case AddressFamily::IPv4:
       af = AF_INET;
       break;
@@ -126,6 +126,21 @@ SocketForAddress(int *outp, Ref<Address> address, Protocol protocol)
     return new PosixError();
 
   *outp = fd;
+  return nullptr;
+}
+
+static Ref<IOError>
+SocketForAddress(Ref<PosixTransport> *outp, AddressFamily inaf, Protocol protocol)
+{
+  int fd;
+  if (Ref<IOError> error = SocketForAddress(&fd, inaf, protocol))
+    return error;
+
+  Ref<PosixTransport> transport = new PosixTransport(fd, kTransportDefaultFlags);
+  if (Ref<IOError> error = transport->Setup())
+    return error;
+
+  *outp = transport;
   return nullptr;
 }
 
@@ -269,7 +284,7 @@ static inline PassRef<IOError>
 ConnectionForAddress(Ref<PosixConnection> *outp, Ref<Address> address, Protocol protocol)
 {
   int fd;
-  Ref<IOError> error = SocketForAddress(&fd, address, protocol);
+  Ref<IOError> error = SocketForAddress(&fd, address->Family(), protocol);
   if (error)
     return error;
 
@@ -316,6 +331,42 @@ Client::Create(Result *result, Ref<Poller> poller,
     return error;
 
   result->operation = op;
+  return nullptr;
+}
+
+static inline PassRef<IOError>
+BindTo(Ref<PosixTransport> transport, Ref<Address> address)
+{
+  // Before we bind, set SO_REUSEADDR.
+  int enable = 1;
+  if (setsockopt(transport->fd(), SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) == -1)
+    return new PosixError();
+  if (bind(transport->fd(), address->SockAddr(), address->SockAddrLen()) == -1)
+    return new PosixError();
+  return nullptr;
+}
+
+Ref<IOError> AMIO_LINK
+amio::net::CreateSocket(Ref<Transport> *outp, AddressFamily af, Protocol proto)
+{
+  Ref<PosixTransport> transport;
+  if (Ref<IOError> error = SocketForAddress(&transport, af, proto))
+    return error;
+
+  *outp = transport;
+  return nullptr;
+}
+
+Ref<IOError> AMIO_LINK
+amio::net::CreateSocket(Ref<Transport> *outp, Ref<Address> address, Protocol proto)
+{
+  Ref<PosixTransport> transport;
+  if (Ref<IOError> error = SocketForAddress(&transport, address->Family(), proto))
+    return error;
+  if (Ref<IOError> error = BindTo(transport, address))
+    return error;
+
+  *outp = transport;
   return nullptr;
 }
 
@@ -480,22 +531,13 @@ Server::Create(Ref<Server> *outp,
   if (!backlog)
     backlog = SOMAXCONN;
 
-  int fd;
-  if (Ref<IOError> error = SocketForAddress(&fd, address, protocol))
+  Ref<PosixTransport> transport;
+  if (Ref<IOError> error = SocketForAddress(&transport, address->Family(), protocol))
     return error;
 
-  Ref<PosixTransport> transport = new PosixTransport(fd, kTransportDefaultFlags);
-  if (Ref<IOError> error = transport->Setup())
-    return nullptr;
-
-  // Before we bind, set SO_REUSEADDR.
-  int enable = 1;
-  if (setsockopt(transport->fd(), SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) == -1)
-    return new PosixError();
-
   // Bind and listen.
-  if (bind(transport->fd(), address->SockAddr(), address->SockAddrLen()) == -1)
-    return new PosixError();
+  if (Ref<IOError> error = BindTo(transport, address))
+    return error;
   if (listen(transport->fd(), backlog) == -1)
     return new PosixError();
 
