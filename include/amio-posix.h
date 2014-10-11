@@ -128,15 +128,6 @@ class AMIO_LINK StatusListener : public ke::IRefcounted
 // Defined later.
 class Poller;
 
-// A IPollable is an object which can be polled. It is a pair of a transport
-// and listener. It is a helper for higher-level layers which require using
-// specific listeners to provide a cleaner API.
-class IPollable
-{
- public:
-  virtual PassRef<IOError> Attach(Poller *poller) = 0;
-};
-
 // A poller is responsible for polling for events. It is not thread-safe.
 class AMIO_LINK Poller : public ke::IRefcounted
 {
@@ -192,9 +183,6 @@ class AMIO_LINK Poller : public ke::IRefcounted
   // NB: This is provided so embedders can simulate edge-triggering as needed;
   // thus, there is no edge-triggered equivalent.
   virtual PassRef<IOError> ChangeStickyEvents(Ref<Transport> transport, EventFlags eventMask) = 0;
-
-  // Helper for IPollables.
-  PassRef<IOError> Attach(IPollable *pollable);
 };
 
 #if defined(KE_BSD) || defined(KE_LINUX) || defined(KE_SOLARIS)

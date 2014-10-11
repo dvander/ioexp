@@ -58,7 +58,7 @@ CanEnableImmediateSocketDelivery()
   if (!buffer)
     return false;
 
-  WSAPROTOCOL_INFOA *protocols = (WSAPROTOCOL_INFOA *)*buffer;
+  WSAPROTOCOL_INFOA *protocols = (WSAPROTOCOL_INFOA *)&buffer[0];
   int count = WSAEnumProtocolsA(NULL, protocols, &bytes);
   if (count == SOCKET_ERROR) {
     if (WSAGetLastError() != WSAENOBUFS)
@@ -66,7 +66,7 @@ CanEnableImmediateSocketDelivery()
     buffer = new uint8_t[bytes];
     if (!buffer)
       return false;
-    protocols = (WSAPROTOCOL_INFOA *)*buffer;
+    protocols = (WSAPROTOCOL_INFOA *)&buffer[0];
   }
   if ((count = WSAEnumProtocolsA(NULL, protocols, &bytes)) == SOCKET_ERROR)
     return false;
@@ -143,16 +143,16 @@ SocketTransport::Read(IOResult *r, Ref<IOContext> baseContext, void *buffer, siz
   if (error == WSA_IO_PENDING)
     return true;
 
-  r->Bytes = size_t(bytesRead);
-  r->Completed = true;
+  r->bytes = size_t(bytesRead);
+  r->completed = true;
   if (error == WSAEMSGSIZE)
-    r->Truncated = true;
-  if (r->Bytes == 0 && length)
-    r->Ended = true;
+    r->truncated = true;
+  if (r->bytes == 0 && length)
+    r->ended = true;
 
   // NB: WSAEMSGSIZE is not WSA_IO_PENDING, so it will never queue an item.
   if (ImmediateDelivery() || error == WSAEMSGSIZE) {
-    r->Context = context;
+    r->context = context;
     context->detach();
   }
   return true;
@@ -186,10 +186,10 @@ SocketTransport::Write(IOResult *r, Ref<IOContext> baseContext, const void *buff
   if (error == WSA_IO_PENDING)
     return true;
 
-  r->Bytes = size_t(bytesSent);
-  r->Completed = true;
+  r->bytes = size_t(bytesSent);
+  r->completed = true;
   if (ImmediateDelivery()) {
-    r->Context = context;
+    r->context = context;
     context->detach();
   }
   return true;
@@ -244,18 +244,18 @@ WinSocket::Read(IOResult *r, void *buffer, size_t maxlength)
       return true;
     }
 
-    r->Error = new WinError(error);
+    r->error = new WinError(error);
     return false;
   }
 
-  r->Completed = true;
+  r->completed = true;
   if (rv == 0) {
     poller_->unhook(this);
-    r->Ended = true;
+    r->ended = true;
     return true;
   }
 
-  r->Bytes = size_t(rv);
+  r->bytes = size_t(rv);
   return true;
 }
 
@@ -269,18 +269,18 @@ WinSocket::Write(IOResult *r, const void *buffer, size_t maxlength)
     DWORD error = WSAGetLastError();
     if (error == WSAEWOULDBLOCK || error == WSAEINPROGRESS) {
       if (poller_) {
-        r->Error = poller_->onWriteWouldBlock(this);
-        if (r->Error)
+        r->error = poller_->onWriteWouldBlock(this);
+        if (r->error)
           return false;
       }
       return true;
     }
 
-    r->Error = new WinError(error);
+    r->error = new WinError(error);
     return false;
   }
 
-  r->Completed = true;
-  r->Bytes = size_t(rv);
+  r->completed = true;
+  r->bytes = size_t(rv);
   return true;
 }

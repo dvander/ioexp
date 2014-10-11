@@ -68,19 +68,26 @@ try_getaddrinfo(const char *node, const char *service,
 }
 #endif
 
-#define STUB_CAST(Kind)               \
+#define STUB_TO_CAST(Kind)            \
   PassRef<Kind> Address::to##Kind() { \
     assert(as##Kind());               \
     return as##Kind();                \
-  }                                   \
+  }
+#define STUB_AS_CAST(Kind)            \
   PassRef<Kind> Address::as##Kind() { \
     return nullptr;                   \
   }
+#define STUB_CAST(Kind)               \
+  STUB_TO_CAST(Kind)                  \
+  STUB_AS_CAST(Kind)
 
 STUB_CAST(IPAddress);
 STUB_CAST(IPv4Address);
 STUB_CAST(IPv6Address);
+
+#if defined(KE_POSIX)
 STUB_CAST(UnixAddress);
+#endif
 
 PassRef<Address>
 Address::Copy()
@@ -132,14 +139,14 @@ IPv4Address::Resolve(Ref<IOError> *error, const char *address)
   if (*error)
     return nullptr;
 
-  if (info->ai_addrlen != sizeof(IPv4Address::buf_)) {
+  Ref<IPv4Address> ipv4 = new IPv4Address;
+  if (info->ai_addrlen != sizeof(ipv4->buf_)) {
     freeaddrinfo(info);
     *error = sInvalidIPv4Length;
     return nullptr;
   }
 
-  Ref<IPv4Address> ipv4 = new IPv4Address;
-  memcpy(&ipv4->buf_, info->ai_addr, sizeof(IPv4Address::buf_));
+  memcpy(&ipv4->buf_, info->ai_addr, sizeof(ipv4->buf_));
   freeaddrinfo(info);
 
 #if defined(KE_SOLARIS)
@@ -221,13 +228,13 @@ IPv6Address::Resolve(Ref<IOError> *error, const char *address)
   if (*error)
     return nullptr;
 
-  if (info->ai_addrlen != sizeof(IPv6Address::buf_)) {
+  if (info->ai_addrlen != sizeof(ipv6->buf_)) {
     freeaddrinfo(info);
     *error = sInvalidIPv6Length;
     return nullptr;
   }
 
-  memcpy(&ipv6->buf_, info->ai_addr, sizeof(IPv6Address::buf_));
+  memcpy(&ipv6->buf_, info->ai_addr, sizeof(ipv6->buf_));
   freeaddrinfo(info);
 
 #if defined(KE_SOLARIS)

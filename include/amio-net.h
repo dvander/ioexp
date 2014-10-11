@@ -19,6 +19,13 @@
 # include <sys/socket.h>
 # include <netinet/in.h>
 # include <sys/un.h>
+#elif defined(KE_WINDOWS)
+# include <Winsock2.h>
+# include <ws2tcpip.h>
+#endif
+
+#if defined(KE_WINDOWS)
+typedef int socklen_t;
 #endif
 
 namespace amio {
@@ -103,12 +110,15 @@ class Address : public ke::Refcounted<Address>
   virtual PassRef<IPAddress> asIPAddress();
   virtual PassRef<IPv4Address> asIPv4Address();
   virtual PassRef<IPv6Address> asIPv6Address();
-  virtual PassRef<UnixAddress> asUnixAddress();
 
   PassRef<IPAddress> toIPAddress();
   PassRef<IPv4Address> toIPv4Address();
   PassRef<IPv6Address> toIPv6Address();
+
+#if defined(KE_POSIX)
+  virtual PassRef<UnixAddress> asUnixAddress();
   PassRef<UnixAddress> toUnixAddress();
+#endif
 };
 
 // Either an IPv4 or an IPv6 address.
@@ -249,9 +259,7 @@ enum class Severity {
 };
 
 // A server accepts network connections on a connection-oriented port.
-class Server :
-  public IPollable,
-  public ke::IRefcounted
+class Server : public ke::IRefcounted
 {
  public:
   // Events on this listener can be fired upon polling.
@@ -279,6 +287,7 @@ class Server :
   // enqueued. Use 0 for the default (usually 128).
   static PassRef<IOError> Create(
     Ref<Server> *server,
+    Ref<Poller> poller,
     Ref<Address> address,
     Protocol protocol,
     Ref<Server::Listener> listener,

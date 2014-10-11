@@ -85,15 +85,15 @@ CompletionPort::Poll(int timeoutMs)
   assert(context->state() != WinContext::None);
 
   IOResult result;
-  result.Bytes = numBytes;
-  result.Completed = true;
-  result.Context = context;
+  result.bytes = numBytes;
+  result.completed = true;
+  result.context = context;
   if (!rv) {
     DWORD error = GetLastError();
     if (error = ERROR_HANDLE_EOF)
-      result.Ended = true;
+      result.ended = true;
     else
-      result.Error = new WinError(error);
+      result.error = new WinError(error);
   }
 
   // Detach the context.

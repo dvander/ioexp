@@ -74,6 +74,8 @@ class ClientHelper
     Terminated = true;
     Error = error;
   }
+
+#if defined(KE_POSIX)
   void OnError(Ref<Transport> transport, Ref<IOError> error) override {
     Terminated = true;
     Error = error;
@@ -81,6 +83,7 @@ class ClientHelper
   void OnHangup(Ref<Transport> transport) override {
     Terminated = true;
   }
+#endif
 
   bool Terminated;
   Ref<IOError> Error;
@@ -100,13 +103,11 @@ TestServerClient::Run()
 
   Ref<ServerHelper> srv_helper = new ServerHelper();
   Ref<Server> server;
-  if (!check_error(Server::Create(&server, local, Protocol::TCP, srv_helper),
+  if (!check_error(Server::Create(&server, poller_, local, Protocol::TCP, srv_helper),
                    "create tcp server on any port"))
   {
     return false;
   }
-  if (!check_error(poller_->Attach(server), "attach server to poller"))
-    return false;
 
   Ref<IPAddress> address = server->ListenAddress()->toIPAddress();
   if (!check(address->Port() != 0, "local port should not be 0"))
@@ -137,12 +138,12 @@ TestServerClient::Run()
         return false;
     }
 
-    if (!check(cli_helper->Conn, "client should get a connect event"))
+    if (!check(cli_helper->Conn != nullptr, "client should get a connect event"))
       return false;
   }
 
   // Make sure we got both events.
-  if (!check(srv_helper->Client, "server should get an accept event"))
+  if (!check(srv_helper->Client != nullptr, "server should get an accept event"))
     return false;
 
   server->Close();

@@ -6,7 +6,7 @@
 // 
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
-#include "amio-errors.h"
+#include "../shared/amio-errors.h"
 #include "amio-windows-errors.h"
 #include "amio-windows-socket.h"
 #include "amio-windows-poll.h"

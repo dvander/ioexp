@@ -30,7 +30,11 @@ runner.sources += [
   'common/server-client.cc',
 ]
 
-if builder.target_platform != 'windows':
+if builder.target_platform == 'windows':
+  runner.sources += [
+    'test-windows.cc',
+  ]
+else:
   runner.sources += [
     'posix/test-pipes.cc',
   ]

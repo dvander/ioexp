@@ -8,7 +8,7 @@
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
 #include <amio-windows.h>
-#include "amio-errors.h"
+#include "../shared/amio-errors.h"
 #include "amio-windows-errors.h"
 #include "amio-windows-util.h"
 #include "amio-windows-file.h"

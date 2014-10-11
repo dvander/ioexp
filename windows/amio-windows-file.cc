@@ -84,8 +84,8 @@ FileTransport::Read(IOResult *r, Ref<IOContext> baseContext, void *buffer, size_
   if (error == ERROR_IO_PENDING)
     return true;
 
-  r->Bytes = size_t(bytesRead);
-  r->Completed = true;
+  r->bytes = size_t(bytesRead);
+  r->completed = true;
 
   // The docs are very vague here, so this may take some trial and error. As
   // far as I can tell, MORE_DATA enqueues into an IOCP based on the delivery
@@ -93,16 +93,16 @@ FileTransport::Read(IOResult *r, Ref<IOContext> baseContext, void *buffer, size_
   // are inconsistent.
   switch (error) {
   case ERROR_HANDLE_EOF:
-    r->Ended = true;
+    r->ended = true;
     break;
   case ERROR_MORE_DATA:
-    r->MoreData = true;
+    r->moreData = true;
     break;
   }
 
   if (ImmediateDelivery()) {
     // No event will be posted to the IOCP, so steal back our reference.
-    r->Context = context;
+    r->context = context;
     context->detach();
   }
 
@@ -136,12 +136,12 @@ FileTransport::Write(IOResult *r, Ref<IOContext> baseContext, const void *buffer
   if (error == ERROR_IO_PENDING)
     return true;
 
-  r->Bytes = size_t(bytesWritten);
-  r->Completed = true;
+  r->bytes = size_t(bytesWritten);
+  r->completed = true;
 
   if (ImmediateDelivery()) {
     // No event will be posted to the IOCP, so steal back our reference.
-    r->Context = context;
+    r->context = context;
     context->detach();
   }
 

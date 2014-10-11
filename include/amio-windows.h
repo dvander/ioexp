@@ -57,7 +57,7 @@ class IOContext : public ke::RefcountedThreadsafe<IOContext>
 //     // return r.Error
 //  ... exit back to the event loop.
 // 
-// However, it is possible to poll data faster by using the "Completed" bit
+// However, it is possible to poll data faster by using the "completed" bit
 // in the result. If it is true, it is safe to immediately read or re-use
 // bytes from the buffer given to the IO operation. However, unless the message
 // pump has "ImmediateDelivery" enabled, the context may not be re-used
@@ -75,7 +75,7 @@ class IOContext : public ke::RefcountedThreadsafe<IOContext>
 //      IOResult r;
 //      if (!transport->Read(&r, r.context, ...))
 //        return r.Error
-//      if (!r.Completed)
+//      if (!r.completed)
 //        return nullptr;
 //
 //      ProcessBytesFrom(r);
@@ -94,47 +94,47 @@ class IOContext : public ke::RefcountedThreadsafe<IOContext>
 //
 // If a system requires that immediate delivery is enabled, then there is no
 // need to track whether or not the Context was set.
-struct AMIO_LINK IOResult
+struct IOResult
 {
   // Set if there was an error.
-  ke::Ref<IOError> Error;
+  ke::Ref<IOError> error;
 
   // True if a connection has received an orderly shutdown from its peer. If
-  // Ended is true, then the socket is automatically removed from the poller.
-  bool Ended;
+  // ended is true, then the socket is automatically removed from the poller.
+  bool ended;
 
   // When reading messages from a message-based stream (such as message pipes,
   // or UDP), and the given buffer was not large enough to read the entire
   // message, one of these will be true. Whether or not the remaining data can
-  // be read depends on which is set. MoreData indicates that it can; Truncated
+  // be read depends on which is set. moreData indicates that it can; truncated
   // indicates that it cannot.
-  bool MoreData;
-  bool Truncated;
+  bool moreData;
+  bool truncated;
 
-  // If true, the operation completed immediately and |Bytes| contains the
+  // If true, the operation completed immediately and |bytes| contains the
   // number of bytes that completed. Any structures associated with the IO
   // operation may be freed or re-used.
   //
   // If false, the operation is still pending.
-  bool Completed;
+  bool completed;
 
-  // Number of bytes that successfully completed. If 0 and Ended is false,
+  // Number of bytes that successfully completed. If 0 and ended is false,
   // then no bytes were received or sent, and the caller should wait for
   // another read or write event to try again.
-  size_t Bytes;
+  size_t bytes;
 
   // If the operation completed successfully and the underlying IO event is
   // is no longer queued (that is, no notification will be passed to the
   // listener), then this will contain the context used to start the operation.
   // Otherwise, it is null.
-  Ref<IOContext> Context;
+  Ref<IOContext> context;
 
   IOResult()
-   : Ended(false), MoreData(false), Truncated(false), Completed(false), Bytes(0)
+   : ended(false), moreData(false), truncated(false), completed(false), bytes(0)
   {}
   IOResult(PassRef<IOError> error, PassRef<IOContext> context)
-   : Error(error), Ended(false), MoreData(false), Truncated(false),
-     Completed(false), Bytes(0), Context(context)
+   : error(error), ended(false), moreData(false), truncated(false),
+     completed(false), bytes(0), context(context)
   {}
 };
 
@@ -152,12 +152,12 @@ class AMIO_LINK Transport : public ke::RefcountedThreadsafe<Transport>
 
   // Initiates a read operation on the supplied buffer. If the operation fails
   // to initiate, then false is returned and r->Error is set. If the operation
-  // cannot complete immediately, |r->Completed| will be false and all other
+  // cannot complete immediately, |r->completed| will be false and all other
   // fields will be 0.
   //
-  // If the operation can complete immediately, |r->Completed| will be true and
+  // If the operation can complete immediately, |r->completed| will be true and
   // all fields will be filled as if they had come from the IOListener OnRead
-  // event. If |r->Context| is non-null, then it is equal to |context| and no
+  // event. If |r->context| is non-null, then it is equal to |context| and no
   // event will be delivered through the poller. Otherwise, |context| is null
   // and the event will be delivered through the poller.
   //
@@ -170,12 +170,12 @@ class AMIO_LINK Transport : public ke::RefcountedThreadsafe<Transport>
 
   // Initiates a write operation using the supplied buffer. If the operation
   // fails to initiate, then false is returned and r->Error is set. If the
-  // operation cannot complete immediately, |r->Completed| will be false and
+  // operation cannot complete immediately, |r->completed| will be false and
   // all other fields will be 0.
   //
-  // If the operation can complete immediately, |r->Completed| will be true and
+  // If the operation can complete immediately, |r->completed| will be true and
   // all fields will be filled as if they had come from the IOListener OnWrite
-  // event. If |r->Context| is non-null, then it is equal to |context| and no
+  // event. If |r->context| is non-null, then it is equal to |context| and no
   // event will be delivered through the poller. Otherwise, |context| is null
   // and the event will be delivered through the poller.
   //
@@ -221,7 +221,7 @@ class AMIO_LINK Transport : public ke::RefcountedThreadsafe<Transport>
 };
 
 // Status listeners for transports.
-class AMIO_LINK IOListener : public ke::VirtualRefcountedThreadsafe
+class AMIO_LINK IOListener : public ke::IRefcounted
 {
  public:
   virtual ~IOListener()
@@ -296,7 +296,7 @@ class AMIO_LINK Poller : public ke::RefcountedThreadsafe<Poller>
   // milliseconds. If timeoutMs is kNoTimeout, it may block indefinitely.
   //
   // Poll() may be called from any thread.
-  virtual PassRef<IOError> Poll(int timeoutMs) = 0;
+  virtual PassRef<IOError> Poll(int timeoutMs = kNoTimeout) = 0;
 
   // Register a transport to an IO listener. The transport is permanently
   // attached to the poller; it is automatically removed when the transport
@@ -463,7 +463,7 @@ class AMIO_LINK SocketPoller
 
    // Deregisters a socket from a pump. This happens automatically if the
    // socket is closed, a status error or hangup is generated, or a Read()
-   // operation returns Ended. It is safe to deregister a socket multiple
+   // operation returns ended. It is safe to deregister a socket multiple
    // times.
    virtual void Detach(Ref<Socket> socket) = 0;
 };

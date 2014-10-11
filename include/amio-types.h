@@ -16,13 +16,7 @@
 
 namespace amio {
 
-#if defined(AMIO_IMPORT)
-# define AMIO_LINK KE_IMPORT
-#elif defined(AMIO_EXPORT)
-# define AMIO_LINK KE_EXPORT
-#else
-# define AMIO_LINK
-#endif
+#define AMIO_LINK KE_LINK
 
 #if !defined(_WIN32)
 # define AMIO_POSIX
@@ -99,7 +93,7 @@ static inline EventFlags & operator &=(EventFlags &left, const EventFlags &right
 }
 
 // Represents an I/O error.
-class AMIO_LINK IOError : public ke::RefcountedThreadsafe<IOError>
+class IOError : public ke::RefcountedThreadsafe<IOError>
 {
  public:
   virtual ~IOError()

@@ -10,7 +10,7 @@
 #define _include_amio_windows_errors_h_
 
 #include <amio-windows.h>
-#include <amio-errors.h>
+#include "../shared/amio-errors.h"
 
 namespace amio {
 
