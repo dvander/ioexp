@@ -42,56 +42,6 @@ class SocketTransport : public WinTransport
   SOCKET socket_;
 };
 
-class WinSocket : public Socket
-{
- public:
-  WinSocket(SOCKET s, SocketFlags flags);
-  ~WinSocket();
-
-  static PassRef<IOError> CreateFrom(Ref<Socket> *outp, SOCKET s, SocketFlags flagS);
-
-  bool Read(IOResult *result, void *buffer, size_t maxlength) override;
-  bool Write(IOResult *result, const void *buffer, size_t maxlength) override;
-  void Close() override;
-  bool Closed() const override {
-    return socket_ == INVALID_SOCKET;
-  }
-  SOCKET Handle() const override {
-    return socket_;
-  }
-  WinSocket *toWinSocket() override {
-    return this;
-  }
-  WinBaseSocketPoller *poller() const {
-    return poller_;
-  }
-  PassRef<SocketListener> listener() {
-    return listener_;
-  }
-  void attach(WinBaseSocketPoller *poller, Ref<SocketListener> listener) {
-    poller_ = poller;
-    listener_ = listener;
-  }
-  void detach() {
-    poller_ = nullptr;
-    listener_ = nullptr;
-  }
-
-  void setUserData(uintptr_t user_data) {
-    user_data_ = user_data;
-  }
-  uintptr_t userData() const {
-    return user_data_;
-  }
-
- private:
-  SOCKET socket_;
-  SocketFlags flags_;
-  uintptr_t user_data_;
-  WinBaseSocketPoller *poller_;
-  Ref<SocketListener> listener_;
-};
-
 } // namespace amio
 
 #endif // _include_amio_windows_socket_h_

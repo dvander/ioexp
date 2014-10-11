@@ -59,8 +59,6 @@ def Configure(binary):
       'windows/amio-windows-errors.cc',
       'windows/amio-windows-file.cc',
       'windows/amio-windows-iocp.cc',
-      'windows/amio-windows-poll.cc',
-      'windows/amio-windows-select.cc',
       'windows/amio-windows-socket.cc',
       'windows/amio-windows-transport.cc',
       'windows/amio-windows-util.cc',

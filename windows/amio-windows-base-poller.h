@@ -34,21 +34,6 @@ class WinBasePoller : public Poller
   Ops::Type pending_events_;
 };
 
-class WinSocket;
-
-class WinBaseSocketPoller : public SocketPoller
-{
- public:
-  // Notifies the pump that the socket would block reading.
-  virtual void onReadWouldBlock(WinSocket *transport) = 0;
-
-  // Notifies the pump that the socket would block writing.
-  virtual PassRef<IOError> onWriteWouldBlock(WinSocket *transport) = 0;
-
-  // Notifies the pump that a socket should be removed from the event list.
-  virtual void unhook(WinSocket *transport) = 0;
-};
-
 } // namespace amio
 
 #endif // _include_amio_windows_base_poller_h_

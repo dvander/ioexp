@@ -14,8 +14,6 @@
 #include "amio-windows-file.h"
 #include "amio-windows-socket.h"
 #include "amio-windows-iocp.h"
-#include "amio-windows-select.h"
-#include "amio-windows-poll.h"
 #include <WinSock2.h>
 
 using namespace amio;
@@ -29,7 +27,6 @@ typedef BOOL (WINAPI *SetFileCompletionNotificationModes_t)(_In_ HANDLE FileHand
 static BOOL sCheckedImmediateDelivery = FALSE;
 static SetFileCompletionNotificationModes_t fnSetFileCompletionNotificationModes;
 static Ref<GenericError> eImmediateDeliveryNotSupported = new GenericError("immediate delivery is not supported");
-static Ref<GenericError> eWSAPollNotAvailable = new GenericError("WSAPoll() is not available on this version of Windows");
 
 bool
 amio::CanEnableImmediateDelivery()
@@ -76,22 +73,6 @@ PollerFactory::CreateCompletionPort(Ref<Poller> *poller, size_t numConcurrentThr
   if (error)
     return error;
   *poller = port;
-  return nullptr;
-}
-
-PassRef<IOError>
-SocketPollerFactory::CreateSocketSelectImpl(SocketPoller **poller)
-{
-  *poller = new SelectImpl();
-  return nullptr;
-}
-
-PassRef<IOError>
-SocketPollerFactory::CreateSocketPollImpl(SocketPoller **poller)
-{
-  if (!IsWSAPollAvailable())
-    return eWSAPollNotAvailable;
-  *poller = new PollImpl();
   return nullptr;
 }
 

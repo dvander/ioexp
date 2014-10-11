@@ -416,11 +416,6 @@ AMIO_LINK Ref<IOError> CreateSocket(Ref<Transport> *outp, Ref<Address> address, 
 // transport is in non-blocking mode so it can be used with Pollers.
 AMIO_LINK Ref<IOError> ConnectTo(Ref<Connection> *outp, Protocol protocol, Ref<Address> address);
 
-#if defined(KE_WINDOWS)
-// Creates a socket connected to an address. This call will block.
-AMIO_LINK Ref<Socket> ConnectSocketTo(Protocol protocol, Ref<Address> address);
-#endif
-
 } // net
 } // amio
 
