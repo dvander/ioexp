@@ -78,9 +78,9 @@ def Configure(binary):
     ]
   elif builder.target_platform == 'solaris':
     binary.sources += [
-      'solaris/amio-solaris.cc',
-      'solaris/amio-solaris-devpoll.cc',
-      'solaris/amio-solaris-port.cc',
+      'solaris/solaris-utils.cc',
+      'solaris/solaris-devpoll.cc',
+      'solaris/solaris-port.cc',
     ]
   return binary
 

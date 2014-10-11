@@ -7,8 +7,8 @@
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
-#include "posix/amio-posix-errors.h"
-#include "solaris/amio-solaris-devpoll.h"
+#include "posix/posix-errors.h"
+#include "solaris/solaris-devpoll.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -58,7 +58,7 @@ DevPollImpl::Shutdown()
 
   for (size_t i = 0; i < fds_.length(); i++) {
     if (fds_[i].transport)
-      fds_[i].transport->detach();
+      detach_for_shutdown_locked(fds_[i].transport);
   }
 
   AMIO_RETRY_IF_EINTR(close(dp_));
@@ -108,7 +108,7 @@ DevPollImpl::attach_locked(PosixTransport *transport, StatusListener *listener, 
   return nullptr;
 }
 
-void
+PassRef<StatusListener>
 DevPollImpl::detach_locked(PosixTransport *transport)
 {
   int fd = transport->fd();
@@ -117,12 +117,9 @@ DevPollImpl::detach_locked(PosixTransport *transport)
 
   WriteDevPoll(dp_, fd, kTransportNoFlags);
 
-  // Just for safety, we detach here in case the assignment below drops the
-  // last ref to the transport.
-  transport->detach();
-
   fds_[fd].transport = nullptr;
   fds_[fd].modified = generation_;
+  return transport->detach();
 }
 
 PassRef<IOError>
@@ -170,9 +167,9 @@ DevPollImpl::handleEvent(int fd)
   AutoMaybeUnlock unlock(lock_);
 
   if (inFlag == kTransportReading)
-    listener->OnReadReady(transport);
+    listener->OnReadReady();
   else if (inFlag == kTransportWriting)
-    listener->OnWriteReady(transport);
+    listener->OnWriteReady();
 }
 
 PassRef<IOError>

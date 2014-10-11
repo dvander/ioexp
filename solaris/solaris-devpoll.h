@@ -11,10 +11,9 @@
 #define _include_amio_solaris_devpoll_pump_h_
 
 #include "include/amio.h"
-#include "include/amio-posix.h"
-#include "shared/amio-shared-pollbuf.h"
-#include "posix/amio-posix-transport.h"
-#include "posix/amio-posix-base-poller.h"
+#include "shared/shared-pollbuf.h"
+#include "posix/posix-transport.h"
+#include "posix/posix-base-poller.h"
 #include <sys/time.h>
 #include <sys/types.h>
 #include <poll.h>
@@ -43,7 +42,7 @@ class DevPollImpl : public PosixPoller
     PosixTransport *transport,
     StatusListener *listener,
     TransportFlags flags) override;
-  void detach_locked(PosixTransport *transport) override;
+  PassRef<StatusListener> detach_locked(PosixTransport *transport) override;
   PassRef<IOError> change_events_locked(PosixTransport *transport, TransportFlags flags) override;
 
  private:

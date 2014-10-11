@@ -7,8 +7,8 @@
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
-#include "posix/amio-posix-errors.h"
-#include "solaris/amio-solaris-port.h"
+#include "posix/posix-errors.h"
+#include "solaris/solaris-port.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -50,7 +50,7 @@ PortImpl::Shutdown()
 
   for (size_t i = 0; i < fds_.length(); i++) {
     if (fds_[i].transport)
-      fds_[i].transport->detach();
+      detach_for_shutdown_locked(fds_[i].transport);
   }
 
   AMIO_RETRY_IF_EINTR(close(port_));
@@ -75,6 +75,7 @@ PortImpl::attach_locked(PosixTransport *transport, StatusListener *listener, Tra
   transport->setUserData(slot);
 
   if (Ref<IOError> error = change_events_locked(transport, flags)) {
+    // Note: we're not fully attached, so no need to notify any proxies.
     detach_locked(transport);
     return error;
   }
@@ -82,7 +83,7 @@ PortImpl::attach_locked(PosixTransport *transport, StatusListener *listener, Tra
   return nullptr;
 }
 
-void
+PassRef<StatusListener>
 PortImpl::detach_locked(PosixTransport *transport)
 {
   int fd = transport->fd();
@@ -93,13 +94,10 @@ PortImpl::detach_locked(PosixTransport *transport)
   if (transport->flags() & kTransportArmed)
     port_dissociate(port_, PORT_SOURCE_FD, fd);
 
-  // Just for safety, we detach here in case the assignment below drops the
-  // last ref to the transport.
-  transport->detach();
-
   fds_[slot].transport = nullptr;
   fds_[slot].modified = generation_;
   free_slots_.append(slot);
+  return transport->detach();
 }
 
 PassRef<IOError>
@@ -150,9 +148,9 @@ PortImpl::handleEvent(size_t slot)
     AutoMaybeUnlock unlock(lock_);
 
     if (outFlag == kTransportReading)
-      listener->OnReadReady(transport);
+      listener->OnReadReady();
     else if (outFlag == kTransportWriting)
-      listener->OnWriteReady(transport);
+      listener->OnWriteReady();
   }
 
   // Don't re-arm if the fd changed or the port is already re-armed.
