@@ -91,6 +91,18 @@ class AMIO_LINK Transport : public ke::IRefcounted
   // Returns whether or not the transport has been closed.
   virtual bool Closed() const = 0;
 
+  // Signal to the underlying poller that a read operation would block. This
+  // is useful when using I/O operations outside of the scope of the ones
+  // provided by AMIO, for example, recvmsg() or sendmsg(), and EAGAIN or
+  // EWOULDBLOCK is returned.
+  virtual void ReadIsBlocked() = 0;
+
+  // Signal to the underlying poller that a write operation would block. This
+  // is useful when using I/O operations outside of the scope of the ones
+  // provided by AMIO, for example, recvmsg() or sendmsg(), and EAGAIN or
+  // EWOULDBLOCK is returned.
+  virtual void WriteIsBlocked() = 0;
+
   // Internal function to cast transports to their underlying type.
   virtual PosixTransport *toPosixTransport() = 0;
 };

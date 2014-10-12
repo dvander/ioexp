@@ -134,3 +134,17 @@ PosixTransport::Setup()
   }
   return nullptr;
 }
+
+void
+PosixTransport::ReadIsBlocked()
+{
+  if (pump_)
+    pump_->onReadWouldBlock(this);
+}
+
+void
+PosixTransport::WriteIsBlocked()
+{
+  if (pump_)
+    pump_->onWriteWouldBlock(this);
+}

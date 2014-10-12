@@ -89,6 +89,9 @@ class PosixTransport
     return userdata_;
   }
 
+  void ReadIsBlocked() override;
+  void WriteIsBlocked() override;
+
  private:
   int fd_;
   uintptr_t userdata_;
