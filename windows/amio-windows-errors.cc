@@ -22,6 +22,7 @@ Ref<GenericError> amio::eIncompatibleTransport = new GenericError("transport is 
 Ref<GenericError> amio::eSocketClosed = new GenericError("socket is closed");
 Ref<GenericError> amio::eIncompatibleSocket = new GenericError("socket is not a WinSocket");
 Ref<GenericError> amio::eSocketAlreadyAttached = new GenericError("socket is already attached");
+Ref<GenericError> amio::eImmediateDeliveryNotSupported = new GenericError("immediate delivery is not supported");
 
 WinError::WinError()
  : error_(GetLastError()),
@@ -67,6 +68,10 @@ WinError::Message()
       return "out of memory";
     strcpy(message_, buffer);
   }
+
+  // Get rid of the \r... why, oh why would it put that there.
+  if (char *str = strchr(message_, '\r'))
+    *str = '\0';
 
   return message_;
 }

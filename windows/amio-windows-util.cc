@@ -19,40 +19,29 @@
 using namespace amio;
 using namespace ke;
 
-#if !defined(FILE_SKIP_COMPLETION_PORT_ON_SUCCESS)
-# define FILE_SKIP_COMPLETION_PORT_ON_SUCCESS 0x1
-#endif
-typedef BOOL (WINAPI *SetFileCompletionNotificationModes_t)(_In_ HANDLE FileHandle, _In_ UCHAR Flags);
+CancelIoEx_t amio::gCancelIoEx;
+SetFileCompletionNotificationModes_t amio::gSetFileCompletionNotificationModes;
 
-static BOOL sCheckedImmediateDelivery = FALSE;
-static SetFileCompletionNotificationModes_t fnSetFileCompletionNotificationModes;
-static Ref<GenericError> eImmediateDeliveryNotSupported = new GenericError("immediate delivery is not supported");
-
-bool
-amio::CanEnableImmediateDelivery()
+class InitFunctions
 {
-  if (fnSetFileCompletionNotificationModes)
-    return true;
-  if (sCheckedImmediateDelivery)
-    return false;
+ public:
+  InitFunctions() {
+    HMODULE kernel32 = LoadLibraryA("Kernel32.dll");
+    if (!kernel32)
+      return;
 
-  // Set this early so we can fail out at any time, and not re-check again.
-  sCheckedImmediateDelivery = true;
+    gSetFileCompletionNotificationModes =
+      (SetFileCompletionNotificationModes_t)GetProcAddress(kernel32, "SetFileCompletionNotificationModes");
+    gCancelIoEx = (CancelIoEx_t)GetProcAddress(kernel32, "CancelIoEx");
 
-  HMODULE kernel32 = LoadLibraryA("Kernel32.dll");
-  if (!kernel32)
-    return false;
-  fnSetFileCompletionNotificationModes =
-    (SetFileCompletionNotificationModes_t)GetProcAddress(kernel32, "SetFileCompletionNotificationModes");
-  FreeLibrary(kernel32);
-
-  return !!fnSetFileCompletionNotificationModes;
-}
+    FreeLibrary(kernel32);
+  }
+} sInitFunctions;
 
 PassRef<IOError>
 amio::EnableImmediateDelivery(HANDLE handle)
 {
-  if (!CanEnableImmediateDelivery())
+  if (!gSetFileCompletionNotificationModes)
     return eImmediateDeliveryNotSupported;
   if (!SetFileCompletionNotificationModes(handle, FILE_SKIP_COMPLETION_PORT_ON_SUCCESS))
     return new WinError();

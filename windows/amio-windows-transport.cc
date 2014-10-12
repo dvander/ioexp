@@ -46,7 +46,7 @@ WinTransport::checkOp(IOResult *r, Ref<IOContext> baseContext, size_t length)
     *r = IOResult(eTransportNotAttached, context);
     return nullptr;
   }
-  if (context->state() != WinContext::None) {
+  if (context->state() != RequestType::None) {
     *r = IOResult(eContextAlreadyAssociated, context);
     return nullptr;
   }

@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <amio.h>
+#include <amio-net.h>
 #include "testing.h"
 
 using namespace ke;
@@ -20,8 +22,13 @@ ke::Vector<AutoTestContext *> ke::TestContexts;
 
 int main(int argc, char **argv)
 {
-#if !defined(_WIN32)
+#if defined(KE_POSIX)
   AutoDisableSigpipe disable_sigpipe;
+#elif defined(KE_WINDOWS)
+  if (Ref<amio::IOError> error = amio::net::StartNetworking()) {
+    fprintf(stderr, "Could not start networking: %s\n", error->Message());
+    return 1;
+  }
 #endif
 
   SetupTests();

@@ -27,15 +27,25 @@ static Ref<GenericError> sInvalidIPv4Length = new GenericError("ipv4 address has
 static Ref<GenericError> sInvalidIPv6Length = new GenericError("ipv6 address has invalid length");
 static Ref<GenericError> sUnknownResolutionError = new GenericError("unknown error resolving address");
 
-inline PassRef<IOError>
-NetworkError()
+static Ref<IPv4Address> sNullIPv4Address;
+static Ref<IPv6Address> sNullIPv6Address;
+
+class InitNetworkVars
 {
-#if defined(KE_WINDOWS)
-  return new WinsockError();
-#else
-  return new PosixError();
-#endif
-}
+ public:
+  InitNetworkVars() {
+    struct sockaddr_in sin;
+    memset(&sin, 0, sizeof(sin));
+    sin.sin_family = AF_INET;
+    sin.sin_addr.s_addr = INADDR_ANY;
+    sNullIPv4Address = new IPv4Address(sin);
+  
+    struct sockaddr_in6 sin6;
+    memset(&sin6, 0, sizeof(sin6));
+    sin6.sin6_family = AF_INET6;
+    sNullIPv6Address = new IPv6Address(sin6);
+  }
+} sInitNetworkVars;
 
 #if defined(KE_WINDOWS)
 static inline const char *
@@ -48,8 +58,9 @@ static inline PassRef<IOError>
 try_getaddrinfo(const char *node, const char *service,
                 const struct addrinfo *hints, struct addrinfo **res)
 {
-  if (getaddrinfo(node, service, hints, res) != 0)
-    return new WinsockError();
+  int rv = getaddrinfo(node, service, hints, res);
+  if (rv != 0)
+    return new WinError(rv);
   return nullptr;
 }
 #else
@@ -89,6 +100,21 @@ STUB_CAST(IPv6Address);
 STUB_CAST(UnixAddress);
 #endif
 
+PassRef<IOError>
+Address::AnyAddress(Ref<Address> *outp, AddressFamily af)
+{
+  switch (af) {
+    case AddressFamily::IPv4:
+      *outp = sNullIPv4Address;
+      return nullptr;
+    case AddressFamily::IPv6:
+      *outp = sNullIPv6Address;
+      return nullptr;
+    default:
+      return eUnsupportedAddressFamily;
+  }
+}
+
 PassRef<Address>
 Address::Copy()
 {
@@ -105,14 +131,19 @@ IPv4Address::IPv4Address()
 {
 }
 
+IPv4Address::IPv4Address(const struct sockaddr_in &buf)
+{
+  buf_ = buf;
+}
+
 IPv4Address::IPv4Address(struct sockaddr **buf, socklen_t *buflen)
 {
   *buf = reinterpret_cast<struct sockaddr *>(&buf_);
   *buflen = sizeof(buf_);
 }
 
-PassRef<IPv4Address>
-IPv4Address::Resolve(Ref<IOError> *error, const char *address)
+PassRef<IOError>
+IPv4Address::Resolve(Ref<IPv4Address> *outp, const char *address)
 {
   AString temp;
   const char *service = nullptr;
@@ -135,25 +166,23 @@ IPv4Address::Resolve(Ref<IOError> *error, const char *address)
   hint.ai_family = AF_INET;
 
   struct addrinfo *info;
-  *error = try_getaddrinfo(address, service, &hint, &info);
-  if (*error)
-    return nullptr;
+  if (Ref<IOError> error = try_getaddrinfo(address, service, &hint, &info))
+    return error;
 
-  Ref<IPv4Address> ipv4 = new IPv4Address;
-  if (info->ai_addrlen != sizeof(ipv4->buf_)) {
+  if (info->ai_addrlen != sizeof(sockaddr_in)) {
     freeaddrinfo(info);
-    *error = sInvalidIPv4Length;
-    return nullptr;
+    return sInvalidIPv4Length;
   }
 
-  memcpy(&ipv4->buf_, info->ai_addr, sizeof(ipv4->buf_));
+  Ref<IPv4Address> ipv4 = new IPv4Address(*(sockaddr_in *)info->ai_addr);
   freeaddrinfo(info);
 
 #if defined(KE_SOLARIS)
   if (port)
     ipv4->buf_.sin_port = htons(port);
 #endif
-  return ipv4;
+  *outp = ipv4;
+  return nullptr;
 }
 
 AString
@@ -190,8 +219,20 @@ IPv6Address::IPv6Address(struct sockaddr **buf, socklen_t *buflen)
   *buflen = sizeof(buf_);
 }
 
-PassRef<IPv6Address>
-IPv6Address::Resolve(Ref<IOError> *error, const char *address)
+IPv6Address::IPv6Address(const struct sockaddr_in6 &buf)
+{
+  buf_ = buf;
+}
+
+PassRef<IOError>
+IPv6Address::AnyAddress(Ref<IPv6Address> *outp)
+{
+  *outp = sNullIPv6Address;
+  return nullptr;
+}
+
+PassRef<IOError>
+IPv6Address::Resolve(Ref<IPv6Address> *outp, const char *address)
 {
   AString temp;
   const char *service = nullptr;
@@ -210,9 +251,6 @@ IPv6Address::Resolve(Ref<IOError> *error, const char *address)
     }
   }
 
-  Ref<IPv6Address> ipv6 = new IPv6Address;
-  memset(&ipv6->buf_, 0, sizeof(ipv6->buf_));
-
 #if defined(KE_SOLARIS)
   // Workaround a bug on Solaris.
   int port = service ? atoi(service) : 0;
@@ -224,24 +262,24 @@ IPv6Address::Resolve(Ref<IOError> *error, const char *address)
   hint.ai_family = AF_INET6;
 
   struct addrinfo *info;
-  *error = try_getaddrinfo(address, service, &hint, &info);
-  if (*error)
-    return nullptr;
+  if (Ref<IOError> error = try_getaddrinfo(address, service, &hint, &info))
+    return error;
 
-  if (info->ai_addrlen != sizeof(ipv6->buf_)) {
+  if (info->ai_addrlen != sizeof(sockaddr_in6)) {
     freeaddrinfo(info);
-    *error = sInvalidIPv6Length;
-    return nullptr;
+    return sInvalidIPv6Length;
   }
 
-  memcpy(&ipv6->buf_, info->ai_addr, sizeof(ipv6->buf_));
+  Ref<IPv6Address> ipv6 = new IPv6Address(*(struct sockaddr_in6 *)info->ai_addr);
   freeaddrinfo(info);
 
 #if defined(KE_SOLARIS)
   if (port)
     ipv6->buf_.sin6_port = htons(port);
 #endif
-  return ipv6;
+
+  *outp = ipv6;
+  return nullptr;
 }
 
 AString

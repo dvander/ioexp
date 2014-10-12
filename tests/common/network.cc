@@ -32,8 +32,8 @@ class NetworkTests : public Test
 
   bool resolve_ipv4() {
     Ref<IOError> error;
-    Ref<net::Address> address = net::IPv4Address::Resolve(&error, "localhost");
-    if (!check_error(error, "resolve localhost on ipv4"))
+    Ref<net::IPv4Address> address;
+    if (!check_error(net::IPv4Address::Resolve(&address, "localhost"), "resolve localhost on ipv4"))
       return false;
    
     AString name = address->ToString();
@@ -42,8 +42,7 @@ class NetworkTests : public Test
       return false;
     }
 
-    address = net::IPv4Address::Resolve(&error, "localhost:80");
-    if (!check_error(error, "resolve localhost:80 on ipv4"))
+    if (!check_error(net::IPv4Address::Resolve(&address, "localhost:80"), "resolve localhost:80 on ipv4"))
       return false;
     name = address->ToString();
     if (!check(name.compare("127.0.0.1:80") == 0, "address should be 127.0.0.1:80")) {
@@ -53,8 +52,7 @@ class NetworkTests : public Test
 
 #if !defined(KE_SOLARIS)
     // These tests do not work on Solaris.
-    address = net::IPv4Address::Resolve(&error, "localhost:http");
-    if (!check_error(error, "resolve localhost:http on ipv4"))
+    if (!check_error(net::IPv4Address::Resolve(&address, "localhost:http"), "resolve localhost:http on ipv4"))
       return false;
     name = address->ToString();
     if (!check(name.compare("127.0.0.1:80") == 0, "address should be 127.0.0.1:80")) {
@@ -63,8 +61,7 @@ class NetworkTests : public Test
     }
 #endif
 
-    address = net::IPv4Address::Resolve(&error, "127.0.0.1:80");
-    if (!check_error(error, "resolve 127.0.0.1:80 on ipv4"))
+    if (!check_error(net::IPv4Address::Resolve(&address, "127.0.0.1:80"), "resolve 127.0.0.1:80 on ipv4"))
       return false;
     name = address->ToString();
     if (!check(name.compare("127.0.0.1:80") == 0, "address should be 127.0.0.1:80")) {
@@ -77,8 +74,8 @@ class NetworkTests : public Test
 
   bool resolve_ipv6() {
     Ref<IOError> error;
-    Ref<net::Address> address = net::IPv6Address::Resolve(&error, "localhost");
-    if (!check_error(error, "resolve localhost on ipv6"))
+    Ref<net::IPv6Address> address;
+    if (!check_error(net::IPv6Address::Resolve(&address, "localhost"), "resolve localhost on ipv6"))
       return false;
    
     AString name = address->ToString();
@@ -87,8 +84,7 @@ class NetworkTests : public Test
       return false;
     }
 
-    address = net::IPv6Address::Resolve(&error, "[localhost]:80");
-    if (!check_error(error, "resolve [localhost]:80 on ipv6"))
+    if (!check_error(net::IPv6Address::Resolve(&address, "[localhost]:80"), "resolve [localhost]:80 on ipv6"))
       return false;
     name = address->ToString();
     if (!check(name.compare("[::1]:80") == 0, "address should be [::1]:80")) {
@@ -96,8 +92,7 @@ class NetworkTests : public Test
       return false;
     }
 
-    address = net::IPv6Address::Resolve(&error, "::1");
-    if (!check_error(error, "resolve 0:0:0:0:0:0:0:1 on ipv6"))
+    if (!check_error(net::IPv6Address::Resolve(&address, "::1"), "resolve 0:0:0:0:0:0:0:1 on ipv6"))
       return false;
     name = address->ToString();
     if (!check(name.compare("::1") == 0, "address should be ::1")) {
@@ -105,8 +100,7 @@ class NetworkTests : public Test
       return false;
     }
 
-    address = net::IPv6Address::Resolve(&error, "[::1]:80");
-    if (!check_error(error, "resolve [::1]:80 on ipv6"))
+    if (!check_error(net::IPv6Address::Resolve(&address, "[::1]:80"), "resolve [::1]:80 on ipv6"))
       return false;
     name = address->ToString();
     if (!check(name.compare("[::1]:80") == 0, "address should be [::1]:80")) {

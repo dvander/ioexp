@@ -21,9 +21,28 @@ namespace amio {
 // Forward declarations for internal types.
 class WinTransport;
 class WinContext;
+class WinBasePoller;
 
 // Forward declarations.
 class IOListener;
+class Transport;
+
+enum class RequestType
+{
+  None,
+  Read,
+  Write,
+  Other,
+  Cancelled
+};
+
+// User data that is reference counted.
+class IUserData : public ke::IRefcounted
+{
+ public:
+  virtual ~IUserData()
+  {}
+};
 
 // IO operations must be associated with a context object. A context can be
 // associated with at most one operation at a time. Internally, this wraps
@@ -34,16 +53,45 @@ class IOContext : public ke::RefcountedThreadsafe<IOContext>
   virtual ~IOContext()
   {}
 
-  // Pre-allocate an IOContext with given user data.
-  static PassRef<IOContext> New(uintptr_t data = 0);
+  // Pre-allocate an IOContext with the given user value.
+  static PassRef<IOContext> New(uintptr_t value = 0);
+
+  // Pre-allocate an IOContext with the given user data and value.
+  static PassRef<IOContext> New(Ref<IUserData> data, uintptr_t value = 0);
 
   // Return user data (defaults to 0). This should not be called while the
   // context is being used by an IO operation.
-  virtual uintptr_t UserData() const = 0;
+  virtual uintptr_t UserValue() const = 0;
 
   // Set arbitrary user data. This should not be called while the context is
   // being used by an IO operation. The old user data is returned.
-  virtual uintptr_t SetUserData(uintptr_t data) = 0;
+  virtual uintptr_t SetUserValue(uintptr_t value) = 0;
+
+  // Return user data (defaults to null).
+  virtual PassRef<IUserData> UserData() const = 0;
+
+  // Set user data.
+  virtual void SetUserData(Ref<IUserData> data) = 0;
+
+  // Return an OVERLAPPED for custom WinAPI events. This locks the context
+  // for the specified event until the event has been posted back to the
+  // completion port.
+  //
+  // The request must not be "None" or "Cancelled", the transport must be
+  // attached to a poller, and the context must not already be locked or in
+  // use. If any of those conditions are not met, this function returns null.
+  virtual OVERLAPPED *LockForOverlappedIO(
+    Ref<Transport> transport,
+    RequestType request) = 0;
+
+  // Contexts are automatically unlocked once they have been received through
+  // an IO completion port. However, if an operation fails and no event is
+  // enqueued, it must be unlocked.
+  virtual void UnlockForFailedOverlappedIO() = 0;
+
+  // Cancel an in-progress IO operation. Note that in a multi-threaded app,
+  // take care that the context is not re-used while the cancel initiates.
+  virtual void Cancel() = 0;
 
   // Access to internal types.
   virtual WinContext *toWinContext() = 0;
@@ -203,7 +251,10 @@ class AMIO_LINK Transport : public ke::RefcountedThreadsafe<Transport>
   // Close the transport. This does not guarantee any pending IO events will
   // be cancelled; events may still be posted to the poller if a transport is
   // closed before all pending operations complete. However, the poller will
-  // discard any events on closed transports.
+  // discard any events received on closed transports.
+  // 
+  // If you have allocated data associated with a context, it is best to use
+  // IUserData so it is always freed.
   virtual void Close() = 0;
 
   // Returns true if the handle has been closed.
@@ -215,6 +266,10 @@ class AMIO_LINK Transport : public ke::RefcountedThreadsafe<Transport>
   // IO operations must not be performed outside of the Transport API,
   // otherwise the poller will (almost certainly) crash.
   virtual HANDLE Handle() = 0;
+
+  // Returns true if immediate delivery has been enabled on this transport. See
+  // Poller for more details.
+  virtual bool ImmediateDelivery() const = 0;
 
   // Access to internal types.
   virtual WinTransport *toWinTransport() = 0;
@@ -233,6 +288,10 @@ class AMIO_LINK IOListener : public ke::IRefcounted
 
   // Receives any write events posted from a Write() operation on a transport.
   virtual void OnWrite(ke::Ref<Transport> transport, IOResult &io)
+  {}
+
+  // Receives events initiated through WinAPI with an "Other" context request.
+  virtual void OnOther(ke::Ref<Transport> transport, IOResult &io)
   {}
 };
 
@@ -330,6 +389,9 @@ class AMIO_LINK Poller : public ke::RefcountedThreadsafe<Poller>
   // cannot enter immediate delivery mode, it will fail to attach. This allows
   // you to handle less edge cases.
   virtual bool RequireImmediateDelivery() = 0;
+
+  // Cast to internal types.
+  virtual WinBasePoller *toWinBasePoller() = 0;
 };
 
 class AMIO_LINK PollerFactory

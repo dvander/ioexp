@@ -61,11 +61,15 @@ class IPv6Address;
 class UnixAddress;
 
 // Abstract representation of a network address.
-class Address : public ke::Refcounted<Address>
+class AMIO_LINK Address : public ke::Refcounted<Address>
 {
  public:
   virtual ~Address()
   {}
+
+  // Get the "any" address for an address family. This is 0.0.0.0 for IPv4,
+  // and :: for IPv6. There is no such address for Unix addresses.
+  static PassRef<IOError> AnyAddress(Ref<Address> *outp, AddressFamily af);
 
   // Resolve an address. AMIO cannot guarantee non-blocking resolution ability,
   // so take care: Resolve() can block.
@@ -78,7 +82,7 @@ class Address : public ke::Refcounted<Address>
   // braces. I.e. [0:0:0:0::0]:80.
   //
   // Returns nullptr with no error if the address could not be resolved.
-  static PassRef<Address> Resolve(Ref<IOError> *error, AddressFamily af, const char *address);
+  static PassRef<IOError> Resolve(Ref<Address> *outp, AddressFamily af, const char *address);
 
   // Return the address family.
   virtual AddressFamily Family() = 0;
@@ -122,7 +126,7 @@ class Address : public ke::Refcounted<Address>
 };
 
 // Either an IPv4 or an IPv6 address.
-class IPAddress : public Address
+class AMIO_LINK IPAddress : public Address
 {
  public:
   // Return the port this address is on; 0 if none.
@@ -134,17 +138,20 @@ class IPAddress : public Address
 };
 
 // An IPv4 address.
-class IPv4Address : public IPAddress
+class AMIO_LINK IPv4Address : public IPAddress
 {
  public:
-  IPv4Address();
   IPv4Address(struct sockaddr **buf, socklen_t *buflen);
+  IPv4Address(const struct sockaddr_in &buf);
 
   // Resolve an IPv4 address. AMIO cannot guarantee non-blocking resolution,
   // so take care: Resolve() can block.
   //
   // Returns nullptr with no error if the address could not be resolved.
-  static PassRef<IPv4Address> Resolve(Ref<IOError> *error, const char *address);
+  static PassRef<IOError> Resolve(Ref<IPv4Address> *outp, const char *address);
+
+  // Returns an address for 0.0.0.0.
+  static PassRef<IOError> AnyAddress(Ref<IPv4Address> *outp);
 
   AddressFamily Family() override {
     return AddressFamily::IPv4;
@@ -166,19 +173,26 @@ class IPv4Address : public IPAddress
   ke::AString ToString() override;
 
  private:
+  IPv4Address();
+
+ private:
   struct sockaddr_in buf_;
 };
 
 // An IPv6 address.
-class IPv6Address : public IPAddress
+class AMIO_LINK IPv6Address : public IPAddress
 {
  public:
   IPv6Address();
   IPv6Address(struct sockaddr **buf, socklen_t *buflen);
+  IPv6Address(const struct sockaddr_in6 &buf);
 
   // Resolve an IPv6 address. AMIO cannot guarantee non-blocking resolution
   // ability, so take care: Resolve() can block.
-  static PassRef<IPv6Address> Resolve(Ref<IOError> *error, const char *address);
+  static PassRef<IOError> Resolve(Ref<IPv6Address> *outp, const char *address);
+
+  // Returns an address for IPv6.
+  static PassRef<IOError> AnyAddress(Ref<IPv6Address> *outp);
 
   AddressFamily Family() override {
     return AddressFamily::IPv6;
@@ -211,7 +225,7 @@ class UnixAddress : public Address
   UnixAddress();
   UnixAddress(struct sockaddr **buf, socklen_t *buflen);
 
-  static PassRef<UnixAddress> Resolve(Ref<IOError> *error, const char *address);
+  static PassRef<IOError> Resolve(Ref<UnixAddress> *outp, const char *address);
 
   AddressFamily Family() override {
     return AddressFamily::Unix;
@@ -231,6 +245,19 @@ class UnixAddress : public Address
   struct sockaddr_un buf_;
 };
 #endif
+
+class AMIO_LINK Connection : public ke::IRefcounted
+{
+ public:
+  // Return the local address of the connection.
+  virtual PassRef<IOError> LocalAddress(Ref<Address> *outp) = 0;
+
+  // Return the peer address of the connection.
+  virtual PassRef<IOError> PeerAddress(Ref<Address> *outp) = 0;
+
+  // Return the underlying transport.
+  virtual PassRef<Transport> GetTransport() = 0;
+};
 
 enum class Action
 {
@@ -259,18 +286,18 @@ enum class Severity {
 };
 
 // A server accepts network connections on a connection-oriented port.
-class Server : public ke::IRefcounted
+class AMIO_LINK Server : public ke::IRefcounted
 {
  public:
   // Events on this listener can be fired upon polling.
-  class Listener : public ke::IRefcounted
+  class AMIO_LINK Listener : public ke::IRefcounted
   {
    public:
     virtual ~Listener()
     {}
 
     // Called when a new connection is available.
-    virtual Action Accept(Ref<amio::Transport> transport, Ref<Address> address) {
+    virtual Action Accept(Ref<Connection> conn) {
       return Action::DeferNext;
     }
 
@@ -298,24 +325,12 @@ class Server : public ke::IRefcounted
   virtual PassRef<Address> ListenAddress() = 0;
 
   // Close the server; stops accepting requests, and terminates any outstanding
-  // connections.
+  // connections. This must not be called if any calls to Poll() are in
+  // progress on another thread.
   virtual void Close() = 0;
 };
 
-class Connection : public ke::IRefcounted
-{
- public:
-  // Return the local address of the connection.
-  virtual PassRef<IOError> LocalAddress(Ref<Address> *outp) = 0;
-
-  // Return the remote address of the connection.
-  virtual PassRef<IOError> RemoteAddress(Ref<Address> *outp) = 0;
-
-  // Return the underlying transport.
-  virtual PassRef<Transport> GetTransport() = 0;
-};
-
-class Operation : public ke::IRefcounted
+class AMIO_LINK Operation : public ke::IRefcounted
 {
  public:
   // Cancel the operation. Once Cancel() is called, it is guaranteed that an
@@ -363,7 +378,8 @@ class Client
   //  protocol:  The protocol to use for the socket.
   //  listener:  Listener to receive event callbacks.
   //  events:    The initial events to listen for once the client has connected.
-  static Ref<IOError> Create(
+  //             On Windows, this is ignored.
+  static PassRef<IOError> Create(
     Result *result,
     Ref<Poller> poller,
     Ref<Address> address,
@@ -373,41 +389,15 @@ class Client
   );
 };
 
-#if 0
-// Use this to listen for datagram sockets.
-class DatagramListener
-{
- public:
-  // Called when a datagram is received. The buffer and address are retained
-  // for re-use by the listener, and may be re-used as soon as the callback
-  // is finished. To save them beyond the callback's scope, they must be copied.
-  virtual void OnReceive(void *buffer, size_t bytes, Ref<Address> address) = 0;
+// Recommended UDP packet size.
+static const size_t kDefaultDatagramSize = 1472;
 
-  // See the comments on Server::Listener.
-  virtual void OnError(Ref<IOError> error, Severity severity) = 0;
-
-  // Recommended UDP packet size.
-  static const size_t kDefaultDatagramSize = 1472;
-
-  // Maximum theoretical sizes of UDP packets.
-  static const size_t kMaxUDPv4PacketSize = 65507;
-  static const size_t kMaxUDPv6PacketSize = 65535;
-
-  // Create a receiver for datagrams and attach it to the given poller. The
-  // maximum sizes that will be received is specified by maxPacketSize and
-  // maxOutOfBandSize (these default to the maximum udp packet size).
-  static Ref<IOError> Create(
-    Ref<Poller> poller,
-    Ref<Address> address,
-    Protocol protocol,
-    Ref<DatagramListener> listener,
-    size_t maxPacketSize = kDefaultDatagramSize,
-    size_t maxOutOfBandSize = kDefaultDatagramSize 
-  );
-};
-#endif
+// Maximum theoretical sizes of UDP packets.
+static const size_t kMaxUDPv4PacketSize = 65507;
+static const size_t kMaxUDPv6PacketSize = 65535;
 
 // Access for creating raw sockets. The address version creates a bound socket.
+// On Windows, the sockets are overlapped so they can be attached to pollers.
 AMIO_LINK Ref<IOError> CreateSocket(Ref<Transport> *outp, AddressFamily af, Protocol proto);
 AMIO_LINK Ref<IOError> CreateSocket(Ref<Transport> *outp, Ref<Address> address, Protocol proto);
 
@@ -415,6 +405,9 @@ AMIO_LINK Ref<IOError> CreateSocket(Ref<Transport> *outp, Ref<Address> address, 
 // connection (if the protocol is connection-oriented). Afterward, the
 // transport is in non-blocking mode so it can be used with Pollers.
 AMIO_LINK Ref<IOError> ConnectTo(Ref<Connection> *outp, Protocol protocol, Ref<Address> address);
+
+// Start up the networking library.
+PassRef<IOError> StartNetworking();
 
 } // net
 } // amio

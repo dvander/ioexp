@@ -303,7 +303,7 @@ ConnectionForAddress(Ref<PosixConnection> *outp, Ref<Address> address, Protocol 
   }
 }
 
-Ref<IOError>
+PassRef<IOError>
 Client::Create(Result *result, Ref<Poller> poller,
                Ref<Address> address, Protocol protocol,
                Ref<Client::Listener> listener, EventFlags events)
@@ -401,6 +401,10 @@ class PosixServer
      address_(address),
      closing_(false)
   {
+  }
+
+  ~PosixServer() {
+    Close();
   }
 
   void AddRef() override {
@@ -549,5 +553,11 @@ Server::Create(Ref<Server> *outp,
     return error;
 
   *outp = server;
+  return nullptr;
+}
+
+PassRef<IOError>
+amio::StartNetworking()
+{
   return nullptr;
 }

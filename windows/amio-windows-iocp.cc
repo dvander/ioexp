@@ -19,9 +19,10 @@ using namespace ke;
 Ref<GenericError> eTooManyThreads = new GenericError("too many threads trying to call Poll()");
 
 CompletionPort::CompletionPort()
-  : port_(NULL),
-    immediate_delivery_(false),
-    immediate_delivery_required_(false)
+ : port_(NULL),
+   concurrent_threads_(0),
+   immediate_delivery_(false),
+   immediate_delivery_required_(false)
 {
 }
 
@@ -37,6 +38,8 @@ CompletionPort::Initialize(size_t numConcurrentThreads)
   port_ = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, numConcurrentThreads);
   if (!port_)
     return new WinError();
+
+  concurrent_threads_ = numConcurrentThreads;
   return nullptr;
 }
 
@@ -67,6 +70,30 @@ CompletionPort::Attach(Ref<Transport> baseTransport, Ref<IOListener> listener)
 PassRef<IOError>
 CompletionPort::Poll(int timeoutMs)
 {
+  // We try to get at least one valid event.
+  DWORD start = GetTickCount();
+  DWORD nextTimeout = timeoutMs;
+  while (true) {
+    size_t nevents;
+    if (Ref<IOError> error = InternalPoll(nextTimeout, &nevents))
+      return error;
+    if (nevents)
+      return nullptr;
+
+    if (timeoutMs == kNoTimeout)
+      continue;
+
+    nextTimeout = timeoutMs - (GetTickCount() - start);
+    if (nextTimeout <= 0)
+      return nullptr;
+  }
+}
+
+PassRef<IOError>
+CompletionPort::InternalPoll(int timeoutMs, size_t *nevents)
+{
+  *nevents = 0;
+
   DWORD numBytes;
   ULONG_PTR key;
   OVERLAPPED *ovp;
@@ -82,42 +109,48 @@ CompletionPort::Poll(int timeoutMs)
   // initiated the IO event. Even after we call detach(), the context wil be
   // held alive by the IOResult.
   WinContext *context = WinContext::fromOverlapped(ovp);
-  assert(context->state() != WinContext::None);
+  assert(context->state() != RequestType::None);
 
   IOResult result;
   result.bytes = numBytes;
   result.completed = true;
   result.context = context;
   if (!rv) {
-    DWORD error = GetLastError();
-    if (error = ERROR_HANDLE_EOF)
+    DWORD error = context->transport()->LastError();
+    if (error == ERROR_HANDLE_EOF)
       result.ended = true;
     else
       result.error = new WinError(error);
   }
 
   // Detach the context.
-  WinContext::State state = context->state();
+  RequestType state = context->state();
   Ref<WinTransport> transport = context->transport();
   context->detach();
 
-  // Decrement the number of pending events.
-  removePendingEvent();
-
-  // If the transport has been closed, don't send any further events.
+  // If the transport is closed, just eat the event. The refcount will drop to
+  // zero (hopefully) once we exit the poll operation, which will also free
+  // any attached user data.
   if (transport->Closed())
     return nullptr;
 
-  // Notify.
+  // Notify. Note that we must do this even if the transport has been closed;
+  // otherwise, there is no way for the user to free contexts.
   switch (state) {
-  case WinContext::Reading:
-    transport->listener()->OnRead(transport, result);
-    break;
-  case WinContext::Writing:
-    transport->listener()->OnWrite(transport, result);
-    break;
+    case RequestType::Read:
+      transport->listener()->OnRead(transport, result);
+      break;
+    case RequestType::Write:
+      transport->listener()->OnWrite(transport, result);
+      break;
+    case RequestType::Other:
+      transport->listener()->OnOther(transport, result);
+      break;
+    case RequestType::Cancelled:
+      break;
   }
 
+  *nevents = 1;
   return nullptr;
 }
 
@@ -127,7 +160,7 @@ CompletionPort::EnableImmediateDelivery()
   if (immediate_delivery_)
     return true;
 
-  if (!CanEnableImmediateDelivery())
+  if (!gSetFileCompletionNotificationModes)
     return false;
 
   immediate_delivery_ = true;
@@ -159,8 +192,7 @@ CompletionPort::WaitAndDiscardPendingEvents()
     // Note: we don't call Release() or use Ref<> here. Calling detach() calls
     // Release(), so after we assume it may have been deleted.
     WinContext *context = WinContext::fromOverlapped(ovp);
-    assert(context->state() != WinContext::None);
+    assert(context->state() != RequestType::None);
     context->detach();
-    removePendingEvent();
   }
 }

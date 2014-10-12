@@ -36,7 +36,7 @@ class ServerHelper
   void Release() override {
     ke::Refcounted<ServerHelper>::Release();
   }
-  Action Accept(Ref<Transport> client, Ref<Address> address) override {
+  Action Accept(Ref<Connection> client) override {
     assert(!Client);
     Client = client;
     return Action::DeferNext;
@@ -46,7 +46,7 @@ class ServerHelper
     ErrorLevel = severity;
   }
 
-  Ref<Transport> Client;
+  Ref<Connection> Client;
   Ref<IOError> Error;
   Severity ErrorLevel;
 };
@@ -96,9 +96,8 @@ TestServerClient::Run()
   if (!check_error(constructor_(&poller_), "create poller"))
     return false;
 
-  Ref<IOError> error;
-  Ref<net::Address> local = net::IPv4Address::Resolve(&error, "127.0.0.1");
-  if (!check_error(error, "resolve 127.0.0.1 on ipv4"))
+  Ref<net::IPv4Address> local;
+  if (!check_error(net::IPv4Address::Resolve(&local, "127.0.0.1"), "resolve 127.0.0.1 on ipv4"))
     return false;
 
   Ref<ServerHelper> srv_helper = new ServerHelper();

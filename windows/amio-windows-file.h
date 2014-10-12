@@ -34,6 +34,9 @@ class FileTransport : public WinTransport
   HANDLE Handle() override {
     return handle_;
   }
+  int LastError() override {
+    return GetLastError();
+  }
 
   PassRef<IOError> EnableImmediateDelivery() override;
 

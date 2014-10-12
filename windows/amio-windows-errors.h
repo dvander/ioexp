@@ -53,6 +53,7 @@ extern Ref<GenericError> eIncompatibleTransport;
 extern Ref<GenericError> eSocketClosed;
 extern Ref<GenericError> eIncompatibleSocket;
 extern Ref<GenericError> eSocketAlreadyAttached;
+extern Ref<GenericError> eImmediateDeliveryNotSupported;
 
 } // namespace amio
 

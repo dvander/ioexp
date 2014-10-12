@@ -27,6 +27,11 @@ class WinBasePoller : public Poller
   void removePendingEvent() {
     Ops::Decrement(&pending_events_);
   }
+  WinBasePoller *toWinBasePoller() override {
+    return this;
+  }
+
+  virtual size_t NumConcurrentThreads() = 0;
 
  protected:
   typedef AtomicOps<sizeof(uintptr_t)> Ops;

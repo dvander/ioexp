@@ -31,6 +31,9 @@ class WinTransport : public Transport
   // immediate delivery can be used.
   virtual PassRef<IOError> EnableImmediateDelivery() = 0;
 
+  // Get the last error in the context of the transport type.
+  virtual int LastError() = 0;
+
   WinContext *checkOp(IOResult *r, Ref<IOContext> context, size_t length);
 
   PassRef<IOListener> listener() const {
@@ -45,6 +48,9 @@ class WinTransport : public Transport
   void attach(PassRef<WinBasePoller> poller, PassRef<IOListener> listener) {
     assert(!poller_ && !listener_);
     poller_ = poller;
+    listener_ = listener;
+  }
+  void changeListener(Ref<IOListener> listener) {
     listener_ = listener;
   }
 

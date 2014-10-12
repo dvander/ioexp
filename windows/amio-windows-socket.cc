@@ -123,7 +123,7 @@ SocketTransport::Read(IOResult *r, Ref<IOContext> baseContext, void *buffer, siz
     return false;
 
   // See note in FileTransport::Read().
-  context->attach(WinContext::Reading, this);
+  context->attach(RequestType::Read, this);
 
   DWORD flags = 0;
   DWORD bytesRead;
@@ -166,7 +166,7 @@ SocketTransport::Write(IOResult *r, Ref<IOContext> baseContext, const void *buff
     return false;
 
   // See note in FileTransport::Read().
-  context->attach(WinContext::Reading, this);
+  context->attach(RequestType::Write, this);
 
   DWORD flags = 0;
   DWORD bytesSent;

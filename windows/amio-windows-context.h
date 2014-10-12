@@ -21,29 +21,34 @@ class WinBasePoller;
 class WinContext : public IOContext
 {
  public:
-  enum State {
-    None,
-    Reading,
-    Writing
-  };
+  WinContext(uintptr_t value = 0);
+  WinContext(Ref<IUserData> data, uintptr_t value = 0);
 
- public:
-  WinContext(uintptr_t data = 0);
-
-  uintptr_t UserData() const override {
-    return data_;
+  uintptr_t UserValue() const override {
+    return value_;
   }
-  uintptr_t SetUserData(uintptr_t data) override {
-    uintptr_t old = data_;
-    data_ = data;
+  uintptr_t SetUserValue(uintptr_t data) override {
+    uintptr_t old = value_;
+    value_ = data;
     return old;
   }
+  PassRef<IUserData> UserData() const override {
+    return data_;
+  }
+  void SetUserData(Ref<IUserData> data) override {
+    data_ = data;
+  }
+  void Cancel() override;
+
   OVERLAPPED *ov() {
     return &ov_;
   }
-  WinContext *toWinContext() {
+  WinContext *toWinContext() override {
     return this;
   }
+
+  OVERLAPPED *LockForOverlappedIO(Ref<Transport> transport, RequestType request) override;
+  void UnlockForFailedOverlappedIO() override;
 
   static WinContext *fromOverlapped(OVERLAPPED *op) {
     return reinterpret_cast<WinContext *>(
@@ -51,8 +56,8 @@ class WinContext : public IOContext
     );
   }
 
-  State state() const {
-    return state_;
+  RequestType state() const {
+    return request_;
   }
   PassRef<WinTransport> transport() {
     return transport_;
@@ -60,14 +65,18 @@ class WinContext : public IOContext
 
   // When attaching for asynchronous IO, we add an extra ref in case the caller
   // loses all refs to the context.
-  void attach(State state, PassRef<WinTransport> transport);
+  void attach(RequestType state, PassRef<WinTransport> transport);
   void detach();
 
  private:
   OVERLAPPED ov_;
-  uintptr_t data_;
-  State state_;
+  uintptr_t value_;
+  RequestType request_;
   Ref<WinTransport> transport_;
+  Ref<IUserData> data_;
+
+  // Unfortunately we need to hold this in case the transport loses its poller.
+  Ref<WinBasePoller> poller_;
 };
 
 } // namespace amio

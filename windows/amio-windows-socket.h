@@ -35,6 +35,12 @@ class SocketTransport : public WinTransport
   virtual HANDLE Handle() override {
     return (HANDLE)socket_;
   }
+  virtual SOCKET socket() const {
+    return socket_;
+  }
+  int LastError() override {
+    return WSAGetLastError();
+  }
 
   virtual PassRef<IOError> EnableImmediateDelivery();
 

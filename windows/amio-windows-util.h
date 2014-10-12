@@ -13,8 +13,25 @@
 
 namespace amio {
 
-bool CanEnableImmediateDelivery();
-PassRef<IOError> EnableImmediateDelivery(HANDLE handle);
+#if !defined(FILE_SKIP_COMPLETION_PORT_ON_SUCCESS)
+# define FILE_SKIP_COMPLETION_PORT_ON_SUCCESS 0x1
+#endif
+
+typedef BOOL (WINAPI *CancelIoEx_t)(
+  _In_ HANDLE hFile, 
+  _In_opt_ LPOVERLAPPED lpOverlapped
+);
+typedef BOOL (WINAPI *SetFileCompletionNotificationModes_t)(
+  _In_ HANDLE FileHandle,
+  _In_ UCHAR Flags
+);
+
+PassRef<IOError>
+EnableImmediateDelivery(HANDLE handle);
+
+extern CancelIoEx_t gCancelIoEx;
+extern SetFileCompletionNotificationModes_t gSetFileCompletionNotificationModes;
+
 
 } // namespace amio
 

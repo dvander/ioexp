@@ -31,11 +31,16 @@ class CompletionPort : public WinBasePoller
   bool RequireImmediateDelivery() override;
   void WaitAndDiscardPendingEvents() override;
 
+  size_t NumConcurrentThreads() override {
+    return concurrent_threads_;
+  }
+
  private:
-  OVERLAPPED_ENTRY *GetBufferForPoll();
+  PassRef<IOError> InternalPoll(int timeoutMs, size_t *nevents);
 
  private:
   HANDLE port_;
+  size_t concurrent_threads_;
   bool immediate_delivery_;
   bool immediate_delivery_required_;
 };

@@ -79,7 +79,9 @@ class AMIO_LINK Transport : public ke::IRefcounted
   // This does not free the C++ Transport object itself, which happens when
   // the object's reference count reaches 0.
   //
-  // Close() is called automatically in the Transport's destructor.
+  // Though Close() is called automatically on destruction, an attached transport
+  // always has at least one reference alive at all times (until it receives an
+  // error, EOF, or hangup). Therefore it is always recommended to call Close().
   virtual void Close() = 0;
 
   // Return the file descriptor behind a transport. If it has been closed, this

@@ -61,7 +61,7 @@ FileTransport::Read(IOResult *r, Ref<IOContext> baseContext, void *buffer, size_
   // completion port. Otherwise, it could be resolved and dequeued on another
   // thread before we get a chance to increment its reference, and Poll() could
   // prematurely destroy it.
-  context->attach(WinContext::Reading, this);
+  context->attach(RequestType::Read, this);
   *r = IOResult();
 
   DWORD bytesRead;
@@ -117,7 +117,7 @@ FileTransport::Write(IOResult *r, Ref<IOContext> baseContext, const void *buffer
     return false;
 
   // See the comment in Read().
-  context->attach(WinContext::Reading, this);
+  context->attach(RequestType::Read, this);
   *r = IOResult();
 
   DWORD bytesWritten;
