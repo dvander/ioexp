@@ -19,17 +19,12 @@
 using namespace ke;
 using namespace amio;
 
-static const int kArmed          = 0x200000;
-static const int kLevelTriggered = 0x400000;
-static const int kSysEventMask   = POLLIN|POLLOUT;
-
 PortImpl::PortImpl()
  : port_(-1),
    generation_(0),
-   max_events_(0)
+   max_events_(0),
+   absolute_max_events_(0)
 {
-  // Make sure our custom flags don't overlap with system ones.
-  assert(((kLevelTriggered|kArmed) & (POLLIN|POLLOUT)) == 0);
 }
 
 PassRef<IOError>
@@ -51,6 +46,12 @@ PortImpl::Initialize(size_t maxEventsPerPoll)
 
 PortImpl::~PortImpl()
 {
+  Shutdown();
+}
+
+void
+PortImpl::Shutdown()
+{
   if (port_ == -1)
     return;
 
@@ -63,15 +64,8 @@ PortImpl::~PortImpl()
 }
 
 PassRef<IOError>
-PortImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, EventFlags eventMask)
+PortImpl::attach_locked(PosixTransport *transport, StatusListener *listener, TransportFlags flags)
 {
-  PosixTransport *transport;
-  Ref<IOError> error = toPosixTransport(&transport, baseTransport);
-  if (error)
-    return error;
-
-  assert(listener);
-
   size_t slot;
   if (free_slots_.empty()) {
     slot = fds_.length();
@@ -84,24 +78,12 @@ PortImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, Eve
   // Hook up the transport.
   fds_[slot].transport = transport;
   fds_[slot].modified = generation_;
-  fds_[slot].events = (eventMask & Event_Sticky) ? kLevelTriggered : 0;
   transport->attach(this, listener);
   transport->setUserData(slot);
 
-  // Set up initial events. If this fails, we unhook the transport and return
-  // an error.
-  if (eventMask) {
-    int events = 0;
-    if (eventMask & Event_Read)
-      events |= POLLIN;
-    if (eventMask & Event_Write)
-      events |= POLLOUT;
-
-    Ref<IOError> error = addEventFlags(slot, events);
-    if (error) {
-      unhook(transport);
-      return error;
-    }
+  if (Ref<IOError> error = change_events_locked(transport, flags)) {
+    detach_locked(transport);
+    return error;
   }
 
   return nullptr;

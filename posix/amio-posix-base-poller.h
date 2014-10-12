@@ -68,6 +68,9 @@ class PosixPoller
   PassRef<IOError> add_events_unlocked(PosixTransport *transport, TransportFlags flags);
   PassRef<IOError> rm_events_unlocked(PosixTransport *transport, TransportFlags flags);
 
+  // Helpers.
+  PassRef<IOError> add_events_locked(PosixTransport *transport, TransportFlags flags);
+  PassRef<IOError> rm_events_locked(PosixTransport *transport, TransportFlags flags);
   void reportHup_locked(Ref<PosixTransport> transport);
   void reportError_locked(Ref<PosixTransport> transport);
   void reportError_locked(Ref<PosixTransport> transport, Ref<IOError> error);

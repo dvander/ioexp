@@ -63,7 +63,8 @@ class AMIO_LINK Transport : public ke::IRefcounted
   //
   // If the operation cannot be completed without blocking, then |Completed|
   // will be false in IOResult, and the caller should wait for a notification
-  // from the status listener to call again.
+  // from the status listener to call again. (If the Read event is not enabled,
+  // it is automatically enabled.)
   // 
   // If an error occurs, |Error| will be set in |result|, and the result will
   // be false.
@@ -77,7 +78,8 @@ class AMIO_LINK Transport : public ke::IRefcounted
   //
   // If the operation cannot be completed without blocking, then |Completed|
   // will be false in IOResult, and the caller should wait for a notification
-  // from the status listener to call again.
+  // from the status listener to call again. (If the write event is not enabled,
+  // it is automatically enabled).
   //
   // If an error occurs, |Error| will be set in |result|, and the result will
   // be false.
@@ -275,7 +277,8 @@ class AMIO_LINK PollerFactory
   static PassRef<IOError> CreateKqueueImpl(Ref<Poller> *outp, size_t maxEventsPerPoll = 0);
 #elif defined(KE_SOLARIS)
   // Create a message pump based on /dev/poll. By default maxEventsPerPoll is
-  // 256. Use 0 for the default. CreatePoller() never chooses /dev/poll.
+  // 0, and the number of events per poll is automatically sized. Otherwise,
+  // it will be capped to the given value.
   static PassRef<IOError> CreateDevPollImpl(Ref<Poller> *outp, size_t maxEventsPerPoll = 0);
 
   // Create a message pump based on IO Completion Ports. By default
@@ -307,14 +310,15 @@ enum AMIO_LINK TransportFlags
   // the transport does not own the descriptor.
   kTransportNoCloseOnExec = 0x00000002,
 
-  // Internal flags. These must have the same values as their event
-  // counterparts.
+  // Internal flags. These must have the same values as any equivalent Event
+  // counterpart.
   kTransportReading       = 0x00000004,
   kTransportWriting       = 0x00000008,
   kTransportLT            = 0x00000010,
   kTransportET            = 0x00000020,
+  kTransportArmed         = 0x00000100,
   kTransportEventMask     = kTransportReading | kTransportWriting,
-  kTransportClearMask     = kTransportEventMask | kTransportET | kTransportLT,
+  kTransportClearMask     = kTransportEventMask | kTransportET | kTransportLT | kTransportArmed,
   kTransportUserFlagMask  = kTransportNoAutoClose|kTransportNoCloseOnExec,
 
   kTransportNoFlags       = 0x00000000,

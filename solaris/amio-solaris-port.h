@@ -36,14 +36,18 @@ class PortImpl : public PosixPoller
 
   PassRef<IOError> Initialize(size_t maxEventsPerPoll = 0);
   PassRef<IOError> Poll(int timeoutMs) override;
-  PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
-  void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
-  PassRef<IOError> ChangeStickyEvents(Ref<Transport> transport, EventFlags eventMask) override;
+  void Shutdown() override;
+  bool SupportsEdgeTriggering() override {
+    return false;
+  }
 
-  PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
-  PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
-  void unhook(PosixTransport *transport) override;
+  PassRef<IOError> attach_locked(
+    PosixTransport *transport,
+    StatusListener *listener,
+    TransportFlags flags) override;
+  void detach_locked(PosixTransport *transport) override;
+  PassRef<IOError> change_events_locked(PosixTransport *transport, TransportFlags flags) override;
 
  private:
   bool isFdChanged(size_t slot) const {
@@ -52,15 +56,13 @@ class PortImpl : public PosixPoller
 
   inline PassRef<IOError> addEventFlags(size_t slot, int flags);
 
-  template <int inFlag>
+  template <int inFlag, TransportFlags outFlag>
   inline void handleEvent(size_t slot);
 
  private:
   struct PollData {
     Ref<PosixTransport> transport;
     volatile size_t modified;
-
-    int events;
   };
 
   int port_;

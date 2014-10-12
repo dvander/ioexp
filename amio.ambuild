@@ -68,7 +68,7 @@ def Configure(binary):
     binary.sources += [
       'solaris/amio-solaris.cc',
       'solaris/amio-solaris-devpoll.cc',
-      'solaris/amio-solaris-port.cc',
+#      'solaris/amio-solaris-port.cc',
     ]
   return binary
 
