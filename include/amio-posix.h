@@ -63,7 +63,8 @@ class AMIO_LINK Transport : public ke::IRefcounted
   //
   // If the operation cannot be completed without blocking, then |Completed|
   // will be false in IOResult, and the caller should wait for a notification
-  // from the status listener to call again.
+  // from the status listener to call again. (If the Read event is not enabled,
+  // it is automatically enabled.)
   // 
   // If an error occurs, |Error| will be set in |result|, and the result will
   // be false.
@@ -77,7 +78,8 @@ class AMIO_LINK Transport : public ke::IRefcounted
   //
   // If the operation cannot be completed without blocking, then |Completed|
   // will be false in IOResult, and the caller should wait for a notification
-  // from the status listener to call again.
+  // from the status listener to call again. (If the write event is not enabled,
+  // it is automatically enabled).
   //
   // If an error occurs, |Error| will be set in |result|, and the result will
   // be false.
@@ -221,11 +223,13 @@ class AMIO_LINK Poller : public ke::IRefcounted
   // Shuts down the poller.
   virtual void Shutdown() = 0;
 
-  // Returns true if Poll() can be called from multiple threads without blocking.
-  virtual bool SupportsParallelPolling() = 0;
-
   // Returns true if native edge-triggering support is available.
   virtual bool SupportsEdgeTriggering() = 0;
+
+  // Returns the maximum number of threads that can concurrently call Poll(). If
+  // this returns 0, there is no limit. If it returns 1, the poller is single-
+  // threaded.
+  virtual size_t MaximumConcurrency() = 0;
 };
 
 #if defined(KE_BSD) || defined(KE_LINUX) || defined(KE_SOLARIS)
@@ -274,24 +278,18 @@ class AMIO_LINK PollerFactory
   // OpenBSD.
   static PassRef<IOError> CreateKqueueImpl(Ref<Poller> *outp, size_t maxEventsPerPoll = 0);
 #elif defined(KE_SOLARIS)
-  // Create a message pump based on /dev/poll. By default maxEventsPerPoll is
-  // 256. Use 0 for the default. CreatePoller() never chooses /dev/poll.
-  static PassRef<IOError> CreateDevPollImpl(Ref<Poller> *outp, size_t maxEventsPerPoll = 0);
-
-  // Create a message pump based on IO Completion Ports. By default
-  // maxEventsPerPoll is 256, when used through CreatePoller(). Use 0 for the
-  // default.
+  // Create a message pump based on ports. By default maxEventsPerPoll is
+  // 0, and the number of events per poll is automatically sized. Otherwise,
+  // it will be capped to the given value.
   //
-  // Unlike Windows IOCP, Solaris allows normal poll()-like notifications
-  // through the port, which can simulate edge-triggering natively. AMIO will
-  // choose completion ports by default for Solaris.
-  //
-  // Although Solaris offers Windows-like async I/O through its AIO interface,
-  // this is not yet supported (AIO is geared toward direct access to block
-  // devices, AMIO is intended for IPC and sockets). Additionally, since it
-  // would (probably) require transport-level locking, this poller is not
-  // thread-safe even though the underlying port is.
+  // Completion ports are (currently) the only POSIX poller that supports
+  // concurrent polling.
   static PassRef<IOError> CreateCompletionPort(Ref<Poller> *outp, size_t maxEventsPoll = 0);
+
+  // Create a message pump based on /dev/poll. By default maxEventsPerPoll is
+  // 0, and the number of events per poll is automatically sized. Otherwise,
+  // it will be capped to the given value.
+  static PassRef<IOError> CreateDevPollImpl(Ref<Poller> *outp, size_t maxEventsPerPoll = 0);
 #endif
 };
 
@@ -307,14 +305,15 @@ enum AMIO_LINK TransportFlags
   // the transport does not own the descriptor.
   kTransportNoCloseOnExec = 0x00000002,
 
-  // Internal flags. These must have the same values as their event
-  // counterparts.
+  // Internal flags. These must have the same values as any equivalent Event
+  // counterpart.
   kTransportReading       = 0x00000004,
   kTransportWriting       = 0x00000008,
   kTransportLT            = 0x00000010,
   kTransportET            = 0x00000020,
+  kTransportArmed         = 0x00000100,
   kTransportEventMask     = kTransportReading | kTransportWriting,
-  kTransportClearMask     = kTransportEventMask | kTransportET | kTransportLT,
+  kTransportClearMask     = kTransportEventMask | kTransportET | kTransportLT | kTransportArmed,
   kTransportUserFlagMask  = kTransportNoAutoClose|kTransportNoCloseOnExec,
 
   kTransportNoFlags       = 0x00000000,

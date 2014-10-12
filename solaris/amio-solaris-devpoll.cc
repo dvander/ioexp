@@ -19,16 +19,13 @@
 using namespace ke;
 using namespace amio;
 
-static const int kEdgeTriggered = 0x800000;
 static const size_t kInitialPollSize = 1024;
 static Ref<GenericError> sDevPollWriteFailed = new GenericError("write to /dev/poll did not complete");
 
 DevPollImpl::DevPollImpl()
  : dp_(-1),
-   generation_(0),
-   max_events_(0)
+   generation_(0)
 {
-  assert((kEdgeTriggered & (POLLIN|POLLOUT)) == 0);
 }
 
 PassRef<IOError>
@@ -37,13 +34,8 @@ DevPollImpl::Initialize(size_t maxEventsPerPoll)
   if ((dp_ = open("/dev/poll", O_RDWR)) == -1)
     return new PosixError();
 
-  if (maxEventsPerPoll == 0)
-    maxEventsPerPoll = kDefaultMaxEventsPerPoll; 
-
-  event_buffer_ = new struct pollfd[maxEventsPerPoll];
-  if (!event_buffer_)
+  if (!event_buffer_.init(32, maxEventsPerPoll))
     return eOutOfMemory;
-  max_events_ = maxEventsPerPoll;
 
   if (!fds_.resize(kInitialPollSize))
     return eOutOfMemory;
@@ -53,6 +45,14 @@ DevPollImpl::Initialize(size_t maxEventsPerPoll)
 
 DevPollImpl::~DevPollImpl()
 {
+  Shutdown();
+}
+
+void
+DevPollImpl::Shutdown()
+{
+  AutoMaybeLock lock(lock_);
+
   if (dp_ == -1)
     return;
 
@@ -65,127 +65,131 @@ DevPollImpl::~DevPollImpl()
 }
 
 static inline PassRef<IOError>
-WriteDevPoll(int dp, struct pollfd *pe)
+WriteDevPoll(int dp, int fd, TransportFlags flags)
 {
-  int rv = write(dp, pe, sizeof(*pe));
+  struct pollfd pe;
+  pe.fd = fd;
+  pe.events = 0;
+  if (flags & kTransportEventMask) {
+    if (flags & kTransportReading)
+      pe.events |= POLLIN;
+    if (flags & kTransportWriting)
+      pe.events |= POLLOUT;
+  } else {
+    pe.events = POLLREMOVE;
+  }
+
+  int rv = write(dp, &pe, sizeof(pe));
   if (rv == -1)
     return new PosixError();
-  if (size_t(rv) != sizeof(*pe))
+  if (size_t(rv) != sizeof(pe))
     return sDevPollWriteFailed;
   return nullptr;
 }
 
 PassRef<IOError>
-DevPollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, EventFlags eventMask)
+DevPollImpl::attach_locked(PosixTransport *transport, StatusListener *listener, TransportFlags flags)
 {
-  PosixTransport *transport;
-  Ref<IOError> error = toPosixTransport(&transport, baseTransport);
-  if (error)
-    return error;
-
-  assert(listener);
-
   if (size_t(transport->fd()) >= fds_.length()) {
     if (!fds_.resize(size_t(transport->fd())))
       return eOutOfMemory;
   }
 
-  // Hook up events.
-  struct pollfd pe;
-  pe.fd = transport->fd();
-  pe.events = 0;
-  if (eventMask & Event_Read)
-    pe.events |= POLLIN;
-  if (eventMask & Event_Write)
-    pe.events |= POLLOUT;
-  pe.revents = 0;
-
-  if (Ref<IOError> error = WriteDevPoll(dp_, &pe))
-    return error;
+  if (flags & kTransportEventMask) {
+    if (Ref<IOError> error = WriteDevPoll(dp_, transport->fd(), flags))
+      return error;
+  }
 
   // Hook up the transport.
   fds_[transport->fd()].transport = transport;
   fds_[transport->fd()].modified = generation_;
-  fds_[transport->fd()].pe = pe;
-  fds_[transport->fd()].flags = (eventMask & Event_Sticky) ? 0 : kEdgeTriggered;
   transport->attach(this, listener);
+  transport->flags() |= flags;
   return nullptr;
 }
 
 void
-DevPollImpl::Detach(Ref<Transport> baseTransport)
+DevPollImpl::detach_locked(PosixTransport *transport)
 {
-  Ref<PosixTransport> transport(baseTransport->toPosixTransport());
-  if (!transport || transport->pump() != this || transport->fd() == -1)
-    return;
+  int fd = transport->fd();
+  assert(fd != -1);
+  assert(fds_[fd].transport == transport);
 
-  unhook(transport);
+  WriteDevPoll(dp_, fd, kTransportNoFlags);
+
+  // Just for safety, we detach here in case the assignment below drops the
+  // last ref to the transport.
+  transport->detach();
+
+  fds_[fd].transport = nullptr;
+  fds_[fd].modified = generation_;
 }
 
 PassRef<IOError>
-DevPollImpl::ChangeStickyEvents(Ref<Transport> baseTransport, EventFlags eventMask)
+DevPollImpl::change_events_locked(PosixTransport *transport, TransportFlags flags)
 {
-  Ref<PosixTransport> transport = validateEventChange(baseTransport, eventMask);
-  if (!transport)
-    return eIncompatibleTransport;
-
-  int fd = transport->fd();
-  if (fds_[fd].flags & kEdgeTriggered)
-    return eIncompatibleTransport;
-
-  int events = 0;
-  if (eventMask & Event_Read)
-    events |= POLLIN;
-  if (eventMask & Event_Write)
-    events |= POLLOUT;
-  if (events == fds_[fd].pe.events)
-    return nullptr;
-
-  struct pollfd tmp = fds_[fd].pe;
-  tmp.events = POLLREMOVE;
-  if (Ref<IOError> error = WriteDevPoll(dp_, &tmp))
+  // Is this needed?
+  if (Ref<IOError> error = WriteDevPoll(dp_, transport->fd(), kTransportNoFlags))
     return error;
+  transport->flags() &= ~kTransportEventMask;
 
-  fds_[fd].pe.events = events;
-  if (Ref<IOError> error = WriteDevPoll(dp_, &fds_[fd].pe)) {
-    fds_[fd].pe.events = 0;
+  if (Ref<IOError> error = WriteDevPoll(dp_, transport->fd(), flags))
     return error;
-  }
+  transport->flags() |= flags;
 
   return nullptr;
 }
 
-template <int inFlag>
+template <TransportFlags inFlag>
 inline void
 DevPollImpl::handleEvent(int fd)
 {
-  // Skip if we're edge triggered and have already seen this event.
-  if ((fds_[fd].flags & (inFlag|kEdgeTriggered)) == (inFlag|kEdgeTriggered))
-    return;
+  Ref<PosixTransport> transport = fds_[fd].transport;
 
   // Skip if we don't want this event at all.
-  if (!(fds_[fd].pe.events & inFlag))
+  if (!(transport->flags() & inFlag))
     return;
 
-  fds_[fd].flags |= inFlag;
+  // If we're edge-triggered, remove this flag. It is fairly complex to add
+  // the flag after we call the handler, since the user may have removed it.
+  // Instead we just add it back immediately even if this means slightly more
+  // calls to write().
+  if (transport->flags() & kTransportET) {
+    if (Ref<IOError> error = rm_events_locked(transport, inFlag)) {
+      reportError_locked(transport, error);
+      return;
+    }
+  }
 
-  if (inFlag == POLLIN)
-    fds_[fd].transport->listener()->OnReadReady(fds_[fd].transport);
-  else if (inFlag == POLLOUT)
-    fds_[fd].transport->listener()->OnWriteReady(fds_[fd].transport);
+  // We must hold the listener in a ref, since if the transport is detached
+  // in the callback, it could be destroyed while |this| is still on the
+  // stack. Similarly, we must hold the transport in a ref in case releasing
+  // the lock allows a detach to happen.
+  Ref<StatusListener> listener = transport->listener();
+
+  AutoMaybeUnlock unlock(lock_);
+
+  if (inFlag == kTransportReading)
+    listener->OnReadReady(transport);
+  else if (inFlag == kTransportWriting)
+    listener->OnWriteReady(transport);
 }
 
 PassRef<IOError>
 DevPollImpl::Poll(int timeoutMs)
 {
+  AutoMaybeLock poll_lock(poll_lock_);
+
   struct dvpoll params;
-  params.dp_fds = event_buffer_;
-  params.dp_nfds = max_events_;
+  params.dp_fds = event_buffer_.get();
+  params.dp_nfds = event_buffer_.length();
   params.dp_timeout = timeoutMs;
 
   int nevents = ioctl(dp_, DP_POLL, &params);
   if (nevents == -1)
     return new PosixError();
+
+  AutoMaybeLock lock(lock_);
 
   generation_++;
   for (int i = 0; i < nevents; i++) {
@@ -196,26 +200,31 @@ DevPollImpl::Poll(int timeoutMs)
 
     // Handle errors first.
     if (pe.revents & POLLERR) {
-      reportError(fds_[slot].transport);
+      reportError_locked(fds_[slot].transport);
       continue;
     }
 
     // Prioritize POLLIN over POLLHUP
     if (pe.events & POLLIN) {
-      handleEvent<POLLIN>(slot);
+      handleEvent<kTransportReading>(slot);
       if (isFdChanged(slot))
         continue;
     }
 
     // Handle explicit hangup.
     if (pe.events & POLLHUP) {
-      reportHup(fds_[slot].transport);
+      reportHup_locked(fds_[slot].transport);
       continue;
     }
 
     // Handle output.
     if (pe.events & POLLOUT)
-      handleEvent<POLLOUT>(slot);
+      handleEvent<kTransportWriting>(slot);
+  }
+
+  if (size_t(nevents) == event_buffer_.length()) {
+    AutoMaybeUnlock unlock(lock_);
+    event_buffer_.maybeResize();
   }
 
   return nullptr;
@@ -226,61 +235,4 @@ DevPollImpl::Interrupt()
 {
   // Not yet implemented.
   abort();
-}
-
-template <int inFlag>
-inline PassRef<IOError>
-DevPollImpl::addEventFlag(PosixTransport *transport)
-{
-  int fd = transport->fd();
-
-  // Unset the flag so we'll receive it again
-  fds_[fd].flags &= ~inFlag;
-
-  // Check if we need to watch a new event.
-  if (!(fds_[fd].pe.events & inFlag)) {
-    struct pollfd tmp = fds_[fd].pe;
-    tmp.events = POLLREMOVE;
-    if (Ref<IOError> error = WriteDevPoll(dp_, &tmp))
-      return error;
-
-    fds_[fd].pe.events |= inFlag;
-    if (Ref<IOError> error = WriteDevPoll(dp_, &fds_[fd].pe)) {
-      fds_[fd].pe.events &= ~inFlag;
-      return error;
-    }
-  }
-  return nullptr;
-}
-
-PassRef<IOError>
-DevPollImpl::onReadWouldBlock(PosixTransport *transport)
-{
-  return addEventFlag<POLLIN>(transport);
-}
-
-PassRef<IOError>
-DevPollImpl::onWriteWouldBlock(PosixTransport *transport)
-{
-  return addEventFlag<POLLOUT>(transport);
-}
-
-void
-DevPollImpl::unhook(PosixTransport *transport)
-{
-  assert(transport->pump() == this);
-
-  int fd = transport->fd();
-  assert(fd != -1);
-  assert(fds_[fd].transport == transport);
-
-  fds_[fd].pe.events = POLLREMOVE;
-  WriteDevPoll(dp_, &fds_[fd].pe);
-
-  // Just for safety, we detach here in case the assignment below drops the
-  // last ref to the transport.
-  transport->detach();
-
-  fds_[fd].transport = nullptr;
-  fds_[fd].modified = generation_;
 }

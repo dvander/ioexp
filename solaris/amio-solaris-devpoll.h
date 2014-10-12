@@ -12,6 +12,7 @@
 
 #include "include/amio.h"
 #include "include/amio-posix.h"
+#include "shared/amio-shared-pollbuf.h"
 #include "posix/amio-posix-transport.h"
 #include "posix/amio-posix-base-poller.h"
 #include <sys/time.h>
@@ -24,8 +25,6 @@ namespace amio {
 
 using namespace ke;
 
-static const size_t kDefaultMaxEventsPerPoll = 256;
-
 // This message pump is based on epoll(), which is available in Linux >= 2.5.44.
 class DevPollImpl : public PosixPoller
 {
@@ -35,43 +34,38 @@ class DevPollImpl : public PosixPoller
 
   PassRef<IOError> Initialize(size_t maxEventsPerPoll = 0);
   PassRef<IOError> Poll(int timeoutMs) override;
-  PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
-  void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
-  PassRef<IOError> ChangeStickyEvents(Ref<Transport> transport, EventFlags eventMask) override;
+  void Shutdown() override;
+  bool SupportsEdgeTriggering() override {
+    return false;
+  }
 
-  PassRef<IOError> addEventFlag(int fd, int flag);
-  PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
-  PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
-  void unhook(PosixTransport *transport) override;
+  PassRef<IOError> attach_locked(
+    PosixTransport *transport,
+    StatusListener *listener,
+    TransportFlags flags) override;
+  void detach_locked(PosixTransport *transport) override;
+  PassRef<IOError> change_events_locked(PosixTransport *transport, TransportFlags flags) override;
 
  private:
   bool isFdChanged(int fd) const {
     return fds_[fd].modified == generation_;
   }
-  template <int inFlag>
-  inline PassRef<IOError> addEventFlag(PosixTransport *transport);
-  template <int inFlag>
+
+  template <TransportFlags outFlag>
   inline void handleEvent(int fd);
 
  private:
   struct PollData {
     Ref<PosixTransport> transport;
     size_t modified;
-    struct pollfd pe;
-
-    // devpoll doesn't have edge triggering, and modifying it is kind of
-    // annoying, so instead we flag POLLIN/POLLOUT here. We also stick a
-    // custom flag here to indicate level-triggering.
-    int flags;
   };
 
   int dp_;
   size_t generation_;
   ke::Vector<PollData> fds_;
 
-  size_t max_events_;
-  ke::AutoArray<struct pollfd> event_buffer_;
+  PollBuffer<struct pollfd> event_buffer_;
 };
 
 } // namespace amio

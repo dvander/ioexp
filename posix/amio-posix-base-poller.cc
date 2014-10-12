@@ -111,6 +111,18 @@ PosixPoller::detach_unlocked(PosixTransport *transport)
 }
 
 PassRef<IOError>
+PosixPoller::add_events_locked(PosixTransport *transport, TransportFlags flags)
+{
+  return change_events_locked(transport, transport->flags() | flags);
+}
+
+PassRef<IOError>
+PosixPoller::rm_events_locked(PosixTransport *transport, TransportFlags flags)
+{
+  return change_events_locked(transport, transport->flags() & ~flags);
+}
+
+PassRef<IOError>
 PosixPoller::change_events_unlocked(PosixTransport *transport, TransportFlags flags)
 {
   AutoMaybeLock lock(lock_);

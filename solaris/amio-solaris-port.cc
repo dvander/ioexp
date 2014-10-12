@@ -19,17 +19,10 @@
 using namespace ke;
 using namespace amio;
 
-static const int kArmed          = 0x200000;
-static const int kLevelTriggered = 0x400000;
-static const int kSysEventMask   = POLLIN|POLLOUT;
-
 PortImpl::PortImpl()
  : port_(-1),
-   generation_(0),
-   max_events_(0)
+   generation_(0)
 {
-  // Make sure our custom flags don't overlap with system ones.
-  assert(((kLevelTriggered|kArmed) & (POLLIN|POLLOUT)) == 0);
 }
 
 PassRef<IOError>
@@ -38,18 +31,19 @@ PortImpl::Initialize(size_t maxEventsPerPoll)
   if ((port_ = port_create()) == -1)
     return new PosixError();
 
-  if (maxEventsPerPoll == 0)
-    maxEventsPerPoll = kDefaultMaxEventsPerPortPoll; 
-
-  max_events_ = maxEventsPerPoll;
-  event_buffer_ = new port_event_t[max_events_];
-  if (!event_buffer_)
+  if (!event_buffers_.init(32, maxEventsPerPoll))
     return eOutOfMemory;
 
   return nullptr;
 }
 
 PortImpl::~PortImpl()
+{
+  Shutdown();
+}
+
+void
+PortImpl::Shutdown()
 {
   if (port_ == -1)
     return;
@@ -63,15 +57,8 @@ PortImpl::~PortImpl()
 }
 
 PassRef<IOError>
-PortImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, EventFlags eventMask)
+PortImpl::attach_locked(PosixTransport *transport, StatusListener *listener, TransportFlags flags)
 {
-  PosixTransport *transport;
-  Ref<IOError> error = toPosixTransport(&transport, baseTransport);
-  if (error)
-    return error;
-
-  assert(listener);
-
   size_t slot;
   if (free_slots_.empty()) {
     slot = fds_.length();
@@ -84,100 +71,97 @@ PortImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, Eve
   // Hook up the transport.
   fds_[slot].transport = transport;
   fds_[slot].modified = generation_;
-  fds_[slot].events = (eventMask & Event_Sticky) ? kLevelTriggered : 0;
   transport->attach(this, listener);
   transport->setUserData(slot);
 
-  // Set up initial events. If this fails, we unhook the transport and return
-  // an error.
-  if (eventMask) {
-    int events = 0;
-    if (eventMask & Event_Read)
-      events |= POLLIN;
-    if (eventMask & Event_Write)
-      events |= POLLOUT;
-
-    Ref<IOError> error = addEventFlags(slot, events);
-    if (error) {
-      unhook(transport);
-      return error;
-    }
+  if (Ref<IOError> error = change_events_locked(transport, flags)) {
+    detach_locked(transport);
+    return error;
   }
 
   return nullptr;
 }
 
 void
-PortImpl::Detach(Ref<Transport> baseTransport)
+PortImpl::detach_locked(PosixTransport *transport)
 {
-  Ref<PosixTransport> transport(baseTransport->toPosixTransport());
-  if (!transport || transport->pump() != this || transport->fd() == -1)
-    return;
+  int fd = transport->fd();
+  size_t slot = transport->getUserData();
+  assert(fd != -1);
+  assert(fds_[slot].transport == transport);
 
-  unhook(transport);
+  if (transport->flags() & kTransportArmed)
+    port_dissociate(port_, PORT_SOURCE_FD, fd);
+
+  // Just for safety, we detach here in case the assignment below drops the
+  // last ref to the transport.
+  transport->detach();
+
+  fds_[slot].transport = nullptr;
+  fds_[slot].modified = generation_;
+  free_slots_.append(slot);
 }
 
 PassRef<IOError>
-PortImpl::ChangeStickyEvents(Ref<Transport> baseTransport, EventFlags eventMask)
+PortImpl::change_events_locked(PosixTransport *transport, TransportFlags flags)
 {
-  Ref<PosixTransport> transport = validateEventChange(baseTransport, eventMask);
-  if (!transport)
-    return eIncompatibleTransport;
-
-  size_t slot = transport->getUserData();
-  if (!(fds_[slot].events & kLevelTriggered))
-    return eIncompatibleTransport;
-
   int events = 0;
-  if (eventMask & Event_Read)
+  if (flags & kTransportReading)
     events |= POLLIN;
-  if (eventMask & Event_Write)
+  if (flags & kTransportWriting)
     events |= POLLOUT;
-  if (events == (fds_[slot].events & kSysEventMask))
-    return nullptr;
 
   int rv = port_associate(
     port_,
     PORT_SOURCE_FD,
-    fds_[slot].transport->fd(),
+    transport->fd(),
     events,
-    (void *)slot);
+    (void *)transport->getUserData());
   if (rv == -1)
     return new PosixError();
 
-  fds_[slot].events = events | kLevelTriggered | kArmed;
+  transport->flags() |= flags;
+  transport->flags() |= kTransportArmed;
   return nullptr;
 }
 
-template <int inFlag>
+template <TransportFlags outFlag>
 inline void
 PortImpl::handleEvent(size_t slot)
 {
-  if (fds_[slot].events & kLevelTriggered) {
-    if (!(fds_[slot].events & inFlag))
-      return;
-  } else {
-    fds_[slot].events &= ~inFlag;
-  }
-  fds_[slot].events &= ~kArmed;
-
-  if (inFlag & POLLIN)
-    fds_[slot].transport->listener()->OnReadReady(fds_[slot].transport);
-  else if (inFlag & POLLOUT)
-    fds_[slot].transport->listener()->OnWriteReady(fds_[slot].transport);
-
-  // If the fd changed or the port was re-armed already, we're done.
-  if (isFdChanged(slot) || (fds_[slot].events & kArmed))
+  Ref<PosixTransport> transport = fds_[slot].transport;
+  if (!(transport->flags() & outFlag))
     return;
 
-  // Re-arm if needed. If level-triggered, we must always re-arm. Otherwise, we
-  // only need to re-arm if we were waiting another event to come in.
-  if ((fds_[slot].events & kLevelTriggered) ||
-      (fds_[slot].events & kSysEventMask) != inFlag)
+  // If edge-triggered, we don't want to re-arm later, so take the flag off.
+  if (transport->flags() & kTransportET)
+    transport->flags() &= ~outFlag;
+
+  // Port is no longer armed after port_get().
+  transport->flags() &= ~kTransportArmed;
+
   {
-    if (Ref<IOError> error = addEventFlags(slot, fds_[slot].events & kSysEventMask))
-      reportError(fds_[slot].transport, error);
+    // We must hold the listener in a ref, since if the transport is detached
+    // in the callback, it could be destroyed while |this| is still on the
+    // stack. Similarly, we must hold the transport in a ref in case releasing
+    // the lock allows a detach to happen.
+    Ref<StatusListener> listener = transport->listener();
+
+    AutoMaybeUnlock unlock(lock_);
+
+    if (outFlag == kTransportReading)
+      listener->OnReadReady(transport);
+    else if (outFlag == kTransportWriting)
+      listener->OnWriteReady(transport);
   }
+
+  // Don't re-arm if the fd changed or the port is already re-armed.
+  if (isFdChanged(slot) || (transport->flags() & kTransportArmed))
+    return;
+
+  // Note: we rely on change_events_locked() not checking prior flags.
+  if (Ref<IOError> error = change_events_locked(transport, transport->flags() & kTransportEventMask))
+    reportError_locked(transport, error);
 }
 
 PassRef<IOError>
@@ -191,32 +175,42 @@ PortImpl::Poll(int timeoutMs)
     timeoutp = &timeout;
   }
 
+  // Note: no poll lock, we're concurrent.
+  MultiPollBuffer<port_event_t>::Use use(event_buffers_);
+
+  PollBuffer<port_event_t> *event_buffer = use.get();
+  if (!event_buffer)
+    return eOutOfMemory;
+
   // Although port_getn will block for at least |nevents|, apparently it can
   // return more.
   uint_t nevents = 1;
-  if (port_getn(port_, event_buffer_, max_events_, &nevents, timeoutp) == -1) {
+  if (port_getn(port_, event_buffer->get(), event_buffer->length(), &nevents, timeoutp) == -1) {
     if (errno == ETIME)
       return nullptr;
     return new PosixError();
   }
 
+  AutoMaybeLock lock(lock_);
+
   generation_++;
   for (uint_t i = 0; i < nevents; i++) {
-    if (event_buffer_[i].portev_source != PORT_SOURCE_FD)
+    const port_event_t &event = event_buffer->at(i);
+    if (event.portev_source != PORT_SOURCE_FD)
       continue;
 
-    size_t slot = size_t(event_buffer_[i].portev_user);
+    size_t slot = size_t(event.portev_user);
     if (isFdChanged(slot))
       continue;
-    assert(int(event_buffer_[i].portev_object) == fds_[slot].transport->fd());
+    assert(int(event.portev_object) == fds_[slot].transport->fd());
 
-    int events = event_buffer_[i].portev_events;
+    int events = event.portev_events;
     if (events & POLLHUP) {
-      reportHup(fds_[slot].transport);
+      reportHup_locked(fds_[slot].transport);
       continue;
     }
     if (events & POLLERR) {
-      reportError(fds_[slot].transport);
+      reportError_locked(fds_[slot].transport);
       continue;
     }
 
@@ -228,10 +222,13 @@ PortImpl::Poll(int timeoutMs)
     // Clear the event we just received. Note that port_get automatically
     // unassociates the descriptor.
     if (events & POLLIN)
-      handleEvent<POLLIN>(slot);
+      handleEvent<kTransportReading>(slot);
     else if (events & POLLOUT)
-      handleEvent<POLLOUT>(slot);
+      handleEvent<kTransportWriting>(slot);
   }
+
+  if (nevents == event_buffer->length())
+    event_buffer->maybeResize();
 
   return nullptr;
 }
@@ -241,67 +238,4 @@ PortImpl::Interrupt()
 {
   // Not yet implemented.
   abort();
-}
-
-inline PassRef<IOError>
-PortImpl::addEventFlags(size_t slot, int flags)
-{
-  // Skip adding events if they're already set, and the fd is armed.
-  if ((fds_[slot].events & (flags|kArmed)) == (flags | kArmed))
-    return nullptr;
-
-  // Combine flags we're already waiting for, with the new flags we want to
-  // see.
-  int all_events = flags | fds_[slot].events;
-  int rv = port_associate(
-    port_,
-    PORT_SOURCE_FD,
-    fds_[slot].transport->fd(),
-    all_events,
-    (void *)slot);
-  if (rv == -1)
-    return new PosixError();
-
-  fds_[slot].events = all_events | kArmed;
-  return nullptr;
-}
-
-PassRef<IOError>
-PortImpl::onReadWouldBlock(PosixTransport *transport)
-{
-  size_t slot = transport->getUserData();
-  assert(fds_[slot].transport == transport);
-
-  return addEventFlags(slot, POLLIN);
-}
-
-PassRef<IOError>
-PortImpl::onWriteWouldBlock(PosixTransport *transport)
-{
-  size_t slot = transport->getUserData();
-  assert(fds_[slot].transport == transport);
-
-  return addEventFlags(slot, POLLOUT);
-}
-
-void
-PortImpl::unhook(PosixTransport *transport)
-{
-  assert(transport->pump() == this);
-
-  int fd = transport->fd();
-  size_t slot = transport->getUserData();
-  assert(fd != -1);
-  assert(fds_[slot].transport == transport);
-
-  if (fds_[slot].events & (POLLIN|POLLOUT))
-    port_dissociate(port_, PORT_SOURCE_FD, fd);
-
-  // Just for safety, we detach here in case the assignment below drops the
-  // last ref to the transport.
-  transport->detach();
-
-  fds_[slot].transport = nullptr;
-  fds_[slot].modified = generation_;
-  free_slots_.append(slot);
 }

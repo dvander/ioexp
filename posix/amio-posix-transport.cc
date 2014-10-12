@@ -65,7 +65,10 @@ PosixTransport::Read(IOResult *result, void *buffer, size_t maxlength)
   ssize_t rv = read(fd_, buffer, maxlength);
   if (rv == -1) {
     if (errno == EWOULDBLOCK || errno == EAGAIN) {
-      ReadIsBlocked();
+      if (Ref<IOError> error = ReadIsBlocked()) {
+        result->error = error;
+        return false;
+      }
       return true;
     }
 
@@ -75,7 +78,6 @@ PosixTransport::Read(IOResult *result, void *buffer, size_t maxlength)
 
   result->completed = true;
   if (rv == 0) {
-    ReadIsBlocked();
     result->ended = true;
     return true;
   }
@@ -92,7 +94,10 @@ PosixTransport::Write(IOResult *result, const void *buffer, size_t maxlength)
   ssize_t rv = write(fd_, buffer, maxlength);
   if (rv == -1) {
     if (errno == EWOULDBLOCK || errno == EAGAIN) {
-      WriteIsBlocked();
+      if (Ref<IOError> error = WriteIsBlocked()) {
+        result->error = error;
+        return false;
+      }
       return true;
     }
 
@@ -147,12 +152,12 @@ PosixTransport::Setup()
 PassRef<IOError>
 PosixTransport::ReadIsBlocked()
 {
+  // Note: we don't acquire the lock here. This is okay, the user is responsible
+  // for synchronizing event delivery if needed.
   if (!(flags_ & kTransportReading)) {
     if (Ref<PosixPoller> poller = poller_.get()) {
       if (Ref<IOError> error = poller->add_events_unlocked(this, kTransportReading))
         return error;
-    } else {
-      return eTransportNotAttached;
     }
   }
   return nullptr;
@@ -161,12 +166,12 @@ PosixTransport::ReadIsBlocked()
 PassRef<IOError>
 PosixTransport::WriteIsBlocked()
 {
+  // Note: we don't acquire the lock here. This is okay, the user is responsible
+  // for synchronizing event delivery if needed.
   if (!(flags_ & kTransportWriting)) {
     if (Ref<PosixPoller> poller = poller_.get()) {
       if (Ref<IOError> error = poller->add_events_unlocked(this, kTransportWriting))
         return error;
-    } else {
-      return eTransportNotAttached;
     }
   }
   return nullptr;

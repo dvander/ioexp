@@ -23,11 +23,11 @@ typedef intptr_t kev_userdata_t;
 typedef void* kev_userdata_t;
 #endif
 
-KqueueImpl::KqueueImpl(size_t maxEvents)
+KqueueImpl::KqueueImpl()
  : kq_(-1),
    generation_(0),
    max_events_(0),
-   absolute_max_events_(0)
+   absolute_max_events_(maxEvents)
 {
 }
 

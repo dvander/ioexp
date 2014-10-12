@@ -12,6 +12,7 @@
 
 #include "include/amio.h"
 #include "include/amio-posix.h"
+#include "shared/amio-shared-pollbuf.h"
 #include "posix/amio-posix-transport.h"
 #include "posix/amio-posix-base-poller.h"
 #include <sys/time.h>
@@ -36,14 +37,21 @@ class PortImpl : public PosixPoller
 
   PassRef<IOError> Initialize(size_t maxEventsPerPoll = 0);
   PassRef<IOError> Poll(int timeoutMs) override;
-  PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
-  void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
-  PassRef<IOError> ChangeStickyEvents(Ref<Transport> transport, EventFlags eventMask) override;
+  void Shutdown() override;
+  bool SupportsEdgeTriggering() override {
+    return false;
+  }
+  size_t MaximumConcurrency() override {
+    return 0;
+  }
 
-  PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
-  PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
-  void unhook(PosixTransport *transport) override;
+  PassRef<IOError> attach_locked(
+    PosixTransport *transport,
+    StatusListener *listener,
+    TransportFlags flags) override;
+  void detach_locked(PosixTransport *transport) override;
+  PassRef<IOError> change_events_locked(PosixTransport *transport, TransportFlags flags) override;
 
  private:
   bool isFdChanged(size_t slot) const {
@@ -52,15 +60,13 @@ class PortImpl : public PosixPoller
 
   inline PassRef<IOError> addEventFlags(size_t slot, int flags);
 
-  template <int inFlag>
+  template <TransportFlags outFlag>
   inline void handleEvent(size_t slot);
 
  private:
   struct PollData {
     Ref<PosixTransport> transport;
-    volatile size_t modified;
-
-    int events;
+    size_t modified;
   };
 
   int port_;
@@ -69,8 +75,7 @@ class PortImpl : public PosixPoller
   Vector<PollData> fds_;
   Vector<size_t> free_slots_;
 
-  size_t max_events_;
-  AutoPtr<port_event_t> event_buffer_;
+  MultiPollBuffer<port_event_t> event_buffers_;
 };
 
 } // namespace amio

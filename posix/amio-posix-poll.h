@@ -39,6 +39,9 @@ class PollImpl : public PosixPoller
   bool SupportsEdgeTriggering() override {
     return false;
   }
+  size_t MaximumConcurrency() override {
+    return 0;
+  }
 
   PassRef<IOError> attach_locked(
     PosixTransport *transport,

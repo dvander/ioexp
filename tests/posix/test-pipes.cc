@@ -132,7 +132,7 @@ TestPipes::test_sticky()
   if (!check(got_read_, "should have gotten read"))
     return false;
 
-  if (!check_error(poller_->ChangeEvents(reader_, Events::Write), "change events"))
+  if (!check_error(poller_->ChangeEvents(reader_, Events::None), "change events"))
     return false;
 
   got_read_ = false;
