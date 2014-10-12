@@ -113,9 +113,8 @@ class NetworkTests : public Test
 
   bool resolve_unix() {
 #if defined(KE_POSIX)
-    Ref<IOError> error;
-    Ref<net::Address> address = net::UnixAddress::Resolve(&error, "/tmp/tmp.sock");
-    if (!check_error(error, "resolve /tmp/tmp.sock"))
+    Ref<net::UnixAddress> address;
+    if (!check_error(net::UnixAddress::Resolve(&address, "/tmp/tmp.sock"), "resolve /tmp/tmp.sock"))
       return false;
    
     AString name = address->ToString();

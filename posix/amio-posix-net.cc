@@ -35,13 +35,11 @@ UnixAddress::UnixAddress(struct sockaddr **buf, socklen_t *buflen)
   *buflen = sizeof(buf_);
 }
 
-PassRef<UnixAddress>
-UnixAddress::Resolve(Ref<IOError> *error, const char *address)
+PassRef<IOError>
+UnixAddress::Resolve(Ref<UnixAddress> *outp, const char *address)
 {
-  if (strlen(address) > kMaxUnixPath) {
-    *error = sUnixNameTooLong;
-    return nullptr;
-  }
+  if (strlen(address) > kMaxUnixPath)
+    return sUnixNameTooLong;
 
   Ref<UnixAddress> out = new UnixAddress;
   out->buf_.sun_family = AF_UNIX;
@@ -50,7 +48,8 @@ UnixAddress::Resolve(Ref<IOError> *error, const char *address)
   out->buf_.sun_len = SUN_LEN(&out->buf_);
 #endif
 
-  return out;
+  *outp = out;
+  return nullptr;
 }
 
 socklen_t
@@ -168,11 +167,11 @@ template <typename T>
 class PosixConnectionT : public PosixConnection
 {
  public:
-  PosixConnectionT(int fd, TransportFlags flags)
-   : PosixConnection(fd, flags)
+  PosixConnectionT(int fd)
+   : PosixConnection(fd, kTransportDefaultFlags)
   {}
 
-  PassRef<IOError> RemoteAddress(Ref<Address> *outp) override {
+  PassRef<IOError> LocalAddress(Ref<Address> *outp) override {
     struct sockaddr *buf;
     socklen_t buflen;
     Ref<T> addr = new T(&buf, &buflen);
@@ -182,7 +181,7 @@ class PosixConnectionT : public PosixConnection
     return nullptr;
   }
 
-  PassRef<IOError> LocalAddress(Ref<Address> *outp) override {
+  PassRef<IOError> PeerAddress(Ref<Address> *outp) override {
     struct sockaddr *buf;
     socklen_t buflen;
     Ref<T> addr = new T(&buf, &buflen);
@@ -280,6 +279,27 @@ class ConnectOp
   EventFlags events_;
 };
 
+// Note: the fd is automatically closed on error, since we assume the fd has
+// not yet moved into an RAII-guarded object.
+static inline PassRef<IOError>
+ConnectionForSocket(Ref<PosixConnection> *outp, int fd, AddressFamily af)
+{
+  switch (af) {
+    case AddressFamily::IPv4:
+      *outp = new PosixConnectionT<IPv4Address>(fd);
+      return nullptr;
+    case AddressFamily::IPv6:
+      *outp = new PosixConnectionT<IPv6Address>(fd);
+      return nullptr;
+    case AddressFamily::Unix:
+      *outp = new PosixConnectionT<UnixAddress>(fd);
+      return nullptr;
+    default:
+      close(fd);
+      return eUnsupportedAddressFamily;
+  }
+}
+
 static inline PassRef<IOError>
 ConnectionForAddress(Ref<PosixConnection> *outp, Ref<Address> address, Protocol protocol)
 {
@@ -287,20 +307,7 @@ ConnectionForAddress(Ref<PosixConnection> *outp, Ref<Address> address, Protocol 
   Ref<IOError> error = SocketForAddress(&fd, address->Family(), protocol);
   if (error)
     return error;
-
-  switch (address->Family()) {
-    case AddressFamily::IPv4:
-      *outp = new PosixConnectionT<IPv4Address>(fd, kTransportDefaultFlags);
-      return nullptr;
-    case AddressFamily::IPv6:
-      *outp = new PosixConnectionT<IPv6Address>(fd, kTransportDefaultFlags);
-      return nullptr;
-    case AddressFamily::Unix:
-      *outp = new PosixConnectionT<UnixAddress>(fd, kTransportDefaultFlags);
-      return nullptr;
-    default:
-      return eUnsupportedAddressFamily;
-  }
+  return ConnectionForSocket(outp, fd, address->Family());
 }
 
 PassRef<IOError>
@@ -417,14 +424,9 @@ class PosixServer
   void OnReadReady(Ref<Transport> server) override {
     assert(server == transport_);
 
-    sockaddr *addr;
-    socklen_t addrlen, orig_addrlen;
-    Ref<Address> remote = address_->NewBuffer(&addr, &orig_addrlen);
-
     size_t failures = 0;
     while (failures < 10) {
-      addrlen = orig_addrlen;
-      int rv = accept(transport_->fd(), addr, &addrlen);
+      int rv = accept(transport_->fd(), nullptr, nullptr);
       if (rv == -1) {
         switch (errno) {
 #if defined(KE_LINUX)
@@ -469,18 +471,20 @@ class PosixServer
       }
 
       // Wrap the new conection in a transport.
-      Ref<PosixTransport> connection = new PosixTransport(rv, kTransportDefaultFlags);
-      Ref<IOError> error = connection->Setup();
-      if (error) {
-        failures++;
+      Ref<PosixConnection> conn;
+      if (Ref<IOError> error = ConnectionForSocket(&conn, rv, address_->Family())) {
         listener_->OnError(error, Severity::Warning);
-        continue;
+        return;
+      }
+      if (Ref<IOError> error = conn->Setup()) {
+        listener_->OnError(error, Severity::Warning);
+        return;
       }
 
       // If the user wants more connections, loop back. Otherwise, we return.
       // Since we're level-triggered here we'll accept more connections next
       // poll.
-      if (listener_->Accept(connection, remote) == Action::DeferNext)
+      if (listener_->Accept(conn) == Action::DeferNext)
         return;
     }
   }
@@ -557,7 +561,7 @@ Server::Create(Ref<Server> *outp,
 }
 
 PassRef<IOError>
-amio::StartNetworking()
+net::StartNetworking()
 {
   return nullptr;
 }
