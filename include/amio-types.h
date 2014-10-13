@@ -44,8 +44,8 @@ struct AMIO_LINK ErrorType
 
 enum EventFlags : uint32_t
 {
-  Event_Read   =  0x1,
-  Event_Write  =  0x2,
+  Event_Read   =  0x4,
+  Event_Write  =  0x8,
 
   // Normally, events are cleared after they are received, and the user must
   // deplete the I/O buffer to signal that a new event is needed. This is called
@@ -72,25 +72,11 @@ enum EventFlags : uint32_t
   // *Note: There is one flag to control behavior for both reads and writes.
   // Although most pollers can distinguish between the modes on one transport,
   // epoll() cannot, so for simplicity we do not provide an API for it.
-  Event_Sticky =  0x8,
+  Event_Sticky =  0x10,
 
   Events_None  =  0x0
 };
-static inline EventFlags operator |(const EventFlags &left, const EventFlags &right) {
-  return EventFlags(uint32_t(left) | uint32_t(right));
-}
-static inline EventFlags operator &(const EventFlags &left, const EventFlags &right) {
-  return EventFlags(uint32_t(left) & uint32_t(right));
-}
-static inline EventFlags operator ~(const EventFlags &flags) {
-  return EventFlags(~uint32_t(flags));
-}
-static inline EventFlags & operator |=(EventFlags &left, const EventFlags &right) {
-  return left = left | right;
-}
-static inline EventFlags & operator &=(EventFlags &left, const EventFlags &right) {
-  return left = left & right;
-}
+KE_DEFINE_ENUM_OPERATORS(EventFlags)
 
 // Represents an I/O error.
 class IOError : public ke::RefcountedThreadsafe<IOError>

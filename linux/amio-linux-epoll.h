@@ -24,40 +24,39 @@ namespace amio {
 
 using namespace ke;
 
-static const size_t kDefaultMaxEventsPerPoll = 256;
-
 // This message pump is based on epoll(), which is available in Linux >= 2.5.44.
 class EpollImpl : public PosixPoller
 {
  public:
-  EpollImpl(size_t maxEvents = kDefaultMaxEventsPerPoll);
+  EpollImpl(size_t maxEvents = 0);
   ~EpollImpl();
 
   PassRef<IOError> Initialize();
   PassRef<IOError> Poll(int timeoutMs) override;
-  PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
-  void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
-  PassRef<IOError> ChangeStickyEvents(Ref<Transport> transport, EventFlags eventMask) override;
+  void Shutdown() override;
 
-  PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
-  PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
-  void unhook(PosixTransport *transport) override;
+  PassRef<IOError> attach_locked(
+    PosixTransport *transport,
+    StatusListener *listener,
+    TransportFlags flags) override;
+  void detach_locked(PosixTransport *transport) override;
+  PassRef<IOError> change_events_locked(PosixTransport *transport, TransportFlags flags) override;
 
  private:
   bool isFdChanged(size_t slot) const {
     return listeners_[slot].modified == generation_;
   }
+
+  PassRef<IOError> epoll_ctl(int cmd, size_t slot, int fd, TransportFlags);
   
-  template <EventFlags outFlag>
+  template <TransportFlags outFlag>
   inline void handleEvent(size_t slot);
 
  private:
   struct PollData {
     Ref<PosixTransport> transport;
     size_t modified;
-    epoll_event pe;
-    EventFlags flags;
   };
 
   int ep_;
@@ -69,6 +68,7 @@ class EpollImpl : public PosixPoller
   ke::Vector<size_t> free_slots_;
 
   size_t max_events_;
+  size_t absolute_max_events_;
   ke::AutoArray<epoll_event> event_buffer_;
 };
 

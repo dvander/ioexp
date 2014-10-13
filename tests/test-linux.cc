@@ -9,6 +9,7 @@
 //
 #include <amio.h>
 #include "posix/test-pipes.h"
+#include "posix/test-threading.h"
 #include "common/server-client.h"
 
 using namespace ke;
@@ -30,4 +31,8 @@ ke::SetupTests()
   Tests.append(new TestServerClient(PollerFactory::CreateSelectImpl, "select-server-client"));
   Tests.append(new TestServerClient(PollerFactory::CreatePollImpl, "poll-server-client"));
   Tests.append(new TestServerClient(create_epoll, "epoll-server-client"));
+
+  Tests.append(new TestThreading(PollerFactory::CreateSelectImpl, "select-threaded"));
+  Tests.append(new TestThreading(PollerFactory::CreatePollImpl, "poll-threaded"));
+  Tests.append(new TestThreading(create_epoll, "epoll-threaded"));
 }

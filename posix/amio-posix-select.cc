@@ -30,6 +30,14 @@ SelectImpl::SelectImpl()
 
 SelectImpl::~SelectImpl()
 {
+  Shutdown();
+}
+
+void
+SelectImpl::Shutdown()
+{
+  AutoMaybeLock lock(lock_);
+
   for (size_t i = 0; i < max_fds_; i++) {
     if (fds_[i].transport)
       fds_[i].transport->detach();
@@ -37,151 +45,30 @@ SelectImpl::~SelectImpl()
 }
 
 PassRef<IOError>
-SelectImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, EventFlags eventMask)
+SelectImpl::attach_locked(PosixTransport *transport, StatusListener *listener, TransportFlags flags)
 {
-  PosixTransport *transport;
-  Ref<IOError> error = toPosixTransport(&transport, baseTransport);
-  if (error)
-    return error;
-
   if (transport->fd() >= FD_SETSIZE)
     return new GenericError("descriptor %d is above FD_SETSIZE (%d)", transport->fd(), FD_SETSIZE);
-
-  assert(listener);
   assert(size_t(transport->fd()) < max_fds_);
 
+  select_ctl(transport->fd(), flags);
+
+  transport->flags() |= flags;
   transport->attach(this, listener);
   fds_[transport->fd()].transport = transport;
   fds_[transport->fd()].modified = generation_;
-  fds_[transport->fd()].flags = eventMask;
 
   if (transport->fd() > fd_watermark_)
     fd_watermark_ = transport->fd();
-
-  if (eventMask & Event_Read)
-    FD_SET(transport->fd(), &read_fds_);
-  if (eventMask & Event_Write)
-    FD_SET(transport->fd(), &write_fds_);
-  return nullptr;
-}
-
-PassRef<IOError>
-SelectImpl::ChangeStickyEvents(Ref<Transport> baseTransport, EventFlags eventMask)
-{
-  Ref<PosixTransport> transport = validateEventChange(baseTransport, eventMask);
-  if (!transport)
-    return eIncompatibleTransport;
-
-  int fd = transport->fd();
-  if (!(fds_[fd].flags & Event_Sticky))
-    return eIncompatibleTransport;
-
-  if (eventMask & Event_Read)
-    FD_SET(fd, &read_fds_);
-  else
-    FD_CLR(fd, &read_fds_);
-  if (eventMask & Event_Write)
-    FD_SET(fd, &write_fds_);
-  else
-    FD_CLR(fd, &write_fds_);
-
-  fds_[fd].flags = eventMask;
   return nullptr;
 }
 
 void
-SelectImpl::Detach(Ref<Transport> baseTransport)
-{
-  Ref<PosixTransport> transport(baseTransport->toPosixTransport());
-  if (!transport || transport->pump() != this || transport->fd() == -1)
-    return;
-
-  unhook(transport);
-}
-
-template <EventFlags outFlag>
-inline void
-SelectImpl::handleEvent(fd_set *set, int fd)
-{
-  if (fds_[fd].flags & Event_Sticky) {
-    if (!(fds_[fd].flags & outFlag))
-      return;
-  } else {
-    // Remove the descriptor to simulate edge-triggering.
-    FD_CLR(fd, set);
-  }
-
-  if (outFlag == Event_Read)
-    fds_[fd].transport->listener()->OnReadReady(fds_[fd].transport);
-  else if (outFlag == Event_Write)
-    fds_[fd].transport->listener()->OnWriteReady(fds_[fd].transport);
-}
-
-PassRef<IOError>
-SelectImpl::Poll(int timeoutMs)
-{
-  // Bail out early if there's nothing to listen for.
-  if (fd_watermark_ == -1)
-    return nullptr;
-
-  struct timeval timeout;
-  struct timeval *timeoutp = nullptr;
-  if (timeoutMs >= 0) {
-    timeout.tv_sec = timeoutMs / 1000;
-    timeout.tv_usec = (timeoutMs % 1000) * 1000;
-    timeoutp = &timeout;
-  }
-
-  // Copy the descriptor maps.
-  fd_set read_fds = read_fds_;
-  fd_set write_fds = write_fds_;
-  int result = select(fd_watermark_ + 1, &read_fds, &write_fds, nullptr, timeoutp);
-  if (result == -1)
-    return new PosixError();
-
-  generation_++;
-  for (int i = 0; i <= fd_watermark_; i++) {
-    // Make sure this transport wasn't swapped out or removed.
-    if (isFdChanged(i))
-      continue;
-
-    if (FD_ISSET(i, &read_fds)) {
-      handleEvent<Event_Read>(&read_fds_, i);
-      if (isFdChanged(i))
-        continue;
-    }
-    if (FD_ISSET(i, &write_fds))
-      handleEvent<Event_Write>(&write_fds_, i);
-  }
-
-  return nullptr;
-}
-
-PassRef<IOError>
-SelectImpl::onReadWouldBlock(PosixTransport *transport)
-{
-  int fd = transport->fd();
-  assert(fds_[fd].transport == transport);
-  FD_SET(fd, &read_fds_);
-  return nullptr;
-}
-
-PassRef<IOError>
-SelectImpl::onWriteWouldBlock(PosixTransport *transport)
-{
-  int fd = transport->fd();
-  assert(fds_[fd].transport == transport);
-  FD_SET(fd, &write_fds_);
-  return nullptr;
-}
-
-void
-SelectImpl::unhook(PosixTransport *transport)
+SelectImpl::detach_locked(PosixTransport *transport)
 {
   int fd = transport->fd();
   assert(fd != -1);
   assert(fds_[fd].transport == transport);
-  assert(transport->pump() == this);
 
   transport->detach();
   FD_CLR(fd, &read_fds_);
@@ -199,6 +86,111 @@ SelectImpl::unhook(PosixTransport *transport)
       }
     }
   }
+}
+
+PassRef<IOError>
+SelectImpl::change_events_locked(PosixTransport *transport, TransportFlags flags)
+{
+  int fd = transport->fd();
+
+  select_ctl(fd, flags);
+  transport->flags() &= ~kTransportEventMask;
+  transport->flags() |= flags;
+  return nullptr;
+}
+
+void
+SelectImpl::select_ctl(int fd, TransportFlags flags)
+{
+  if (flags & kTransportReading)
+    FD_SET(fd, &read_fds_);
+  else
+    FD_CLR(fd, &read_fds_);
+  if (flags & kTransportWriting)
+    FD_SET(fd, &write_fds_);
+  else
+    FD_CLR(fd, &write_fds_);
+}
+
+template <TransportFlags outFlag>
+inline void
+SelectImpl::handleEvent(fd_set *set, int fd)
+{
+  Ref<PosixTransport> transport = fds_[fd].transport;
+  if (transport->flags() & kTransportSticky) {
+    // Ignore - the event's been changed.
+    if (!(transport->flags() & outFlag))
+      return;
+  } else {
+    // Remove the descriptor to simulate edge-triggering.
+    FD_CLR(fd, set);
+    transport->flags() &= ~outFlag;
+  }
+
+  // We must hold the listener in a ref, since if the transport is detached
+  // in the callback, it could be destroyed while |this| is still on the
+  // stack. Similarly, we must hold the transport in a ref in case releasing
+  // the lock allows a detach to happen.
+  Ref<StatusListener> listener = transport->listener();
+
+  AutoMaybeUnlock unlock(lock_);
+  if (outFlag == kTransportReading)
+    listener->OnReadReady(transport);
+  else if (outFlag == kTransportWriting)
+    listener->OnWriteReady(transport);
+}
+
+PassRef<IOError>
+SelectImpl::Poll(int timeoutMs)
+{
+  // We acquire a lock specifically for Poll(), to make sure it isn't called on
+  // any thread or within callbacks.
+  AutoMaybeLock poll_lock(poll_lock_);
+
+  // Bail out early if there's nothing to listen for.
+  if (fd_watermark_ == -1)
+    return nullptr;
+
+  struct timeval timeout;
+  struct timeval *timeoutp = nullptr;
+  if (timeoutMs >= 0) {
+    timeout.tv_sec = timeoutMs / 1000;
+    timeout.tv_usec = (timeoutMs % 1000) * 1000;
+    timeoutp = &timeout;
+  }
+
+  fd_set read_fds, write_fds;
+
+  // Copy the descriptor maps. Do this in a lock, so we don't have to hold the
+  // transport lock while polling.
+  {
+    AutoMaybeLock lock(lock_);
+    read_fds = read_fds_;
+    write_fds = write_fds_;
+  }
+
+  int result = select(fd_watermark_ + 1, &read_fds, &write_fds, nullptr, timeoutp);
+  if (result == -1)
+    return new PosixError();
+
+  AutoMaybeLock lock(lock_);
+
+  generation_++;
+  for (int i = 0; i <= fd_watermark_; i++) {
+    // Make sure this transport wasn't swapped out or removed.
+    if (isFdChanged(i))
+      continue;
+
+    if (FD_ISSET(i, &read_fds)) {
+      handleEvent<kTransportReading>(&read_fds_, i);
+      if (isFdChanged(i))
+        continue;
+    }
+    if (FD_ISSET(i, &write_fds))
+      handleEvent<kTransportWriting>(&write_fds_, i);
+  }
+
+  return nullptr;
 }
 
 void

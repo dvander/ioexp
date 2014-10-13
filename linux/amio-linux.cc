@@ -58,6 +58,6 @@ PassRef<IOError>
 PollerFactory::CreatePoller(Ref<Poller> *outp)
 {
   if (IsAtLeastLinux(2, 5, 44))
-    return CreateEpollImpl(outp, kDefaultMaxEventsPerPoll);
+    return CreateEpollImpl(outp, 0);
   return PollerFactory::CreatePollImpl(outp);
 }

@@ -25,7 +25,7 @@ class PosixPoller;
 // A PosixTransport wraps a Unix file descriptor.
 class PosixTransport
   : public Transport,
-    public ke::Refcounted<PosixTransport>
+    public ke::RefcountedThreadsafe<PosixTransport>
 {
  public:
   PosixTransport(int fd, TransportFlags flags);
@@ -46,33 +46,31 @@ class PosixTransport
     return fd_ == -1;
   }
   void AddRef() override {
-    ke::Refcounted<PosixTransport>::AddRef();
+    ke::RefcountedThreadsafe<PosixTransport>::AddRef();
   }
   void Release() override {
-    ke::Refcounted<PosixTransport>::Release();
+    ke::RefcountedThreadsafe<PosixTransport>::Release();
+  }
+  PassRef<IOError> ReadIsBlocked() override;
+  PassRef<IOError> WriteIsBlocked() override;
+
+  bool attached() {
+    if (!poller_.get())
+      return false;
+    return true;
   }
 
   // Setup the descriptor, if it hasn't been set up already.
   PassRef<IOError> Setup();
 
-  // Return the underlying file descriptor.
+  void attach(PosixPoller *poller, StatusListener *listener);
+  void detach();
+
   int fd() const {
     return fd_;
   }
-
-  // Pump callbacks.
-  void attach(PosixPoller *pump, PassRef<StatusListener> listener) {
-    // Do not overwrite an existing pump with a non-null pump.
-    assert(!pump_);
-    pump_ = pump;
-    listener_ = listener;
-  }
-  void detach() {
-    pump_ = nullptr;
-    listener_ = nullptr;
-  }
-  PosixPoller *pump() const {
-    return pump_;
+  AlreadyRefed<PosixPoller> poller() {
+    return poller_.get();
   }
   PassRef<StatusListener> listener() {
     return listener_;
@@ -89,18 +87,20 @@ class PosixTransport
     return userdata_;
   }
 
-  void ReadIsBlocked() override;
-  void WriteIsBlocked() override;
+  TransportFlags &flags() {
+    return flags_;
+  }
 
  private:
   int fd_;
   uintptr_t userdata_;
   TransportFlags flags_;
-  PosixPoller *pump_;
 
-  // This will not cause a cycle with status listeners that hold a reference to
-  // the transport, since the act of closing the transport (which is recommended)
-  // will clear the pump, which also clears the listener.
+  // These should not cause cycles. When the transport is closed, or when the
+  // poller removes transports, it forcibly nulls out these fields. However,
+  // if a poller is never shutdown and it has a transport that never receives
+  // an error/EOF/close, then they could hold eachother alive.
+  AtomicRef<PosixPoller> poller_;
   Ref<StatusListener> listener_;
 };
 

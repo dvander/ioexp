@@ -41,7 +41,12 @@ struct AMIO_LINK IOResult
 };
 
 // Describes a low-level transport mechanism used in Posix. This is essentially
-// a wrapper around a file descriptor.
+// a wrapper around a file descriptor. Functions on a transport are thread-safe
+// with respect to operations on a poller, unless otherwise noted.
+// 
+// I/O operations may have undefined behavior if used on multiple threads; for
+// example, it is inadvisable to have two threads writing to a stream at the
+// same time.
 class AMIO_LINK Transport : public ke::IRefcounted
 {
  public:
@@ -54,7 +59,7 @@ class AMIO_LINK Transport : public ke::IRefcounted
   // closed, |Closed| will be true in |result|.
   //
   // If the operation cannot be completed without blocking, then |Completed|
-  // wil be false in IOResult, and the caller should wait for a notification
+  // will be false in IOResult, and the caller should wait for a notification
   // from the status listener to call again.
   // 
   // If an error occurs, |Error| will be set in |result|, and the result will
@@ -68,20 +73,21 @@ class AMIO_LINK Transport : public ke::IRefcounted
   // error occurring.
   //
   // If the operation cannot be completed without blocking, then |Completed|
-  // wil be false in IOResult, and the caller should wait for a notification
+  // will be false in IOResult, and the caller should wait for a notification
   // from the status listener to call again.
   //
   // If an error occurs, |Error| will be set in |result|, and the result will
   // be false.
   virtual bool Write(IOResult *result, const void *buffer, size_t maxlength) = 0;
 
-  // Closes the transport, and frees any underlying operating system resources.
-  // This does not free the C++ Transport object itself, which happens when
-  // the object's reference count reaches 0.
+  // Closes the transport for further communication. This automatically
+  // disconnects it from its active poller. Close() is automatically closed
+  // when the transport has no more references, though if it is attached to
+  // a poller, it will always have at least one reference until an EOF, error,
+  // or hangup is received. It is recommended to explicitly close transports.
   //
-  // Though Close() is called automatically on destruction, an attached transport
-  // always has at least one reference alive at all times (until it receives an
-  // error, EOF, or hangup). Therefore it is always recommended to call Close().
+  // If Close() is called on another thread, callbacks may still be fired
+  // before the close is acknowledged.
   virtual void Close() = 0;
 
   // Return the file descriptor behind a transport. If it has been closed, this
@@ -95,13 +101,19 @@ class AMIO_LINK Transport : public ke::IRefcounted
   // is useful when using I/O operations outside of the scope of the ones
   // provided by AMIO, for example, recvmsg() or sendmsg(), and EAGAIN or
   // EWOULDBLOCK is returned.
-  virtual void ReadIsBlocked() = 0;
+  // 
+  // It is not necessary to call this if the read event is enabled for the
+  // transport.
+  virtual PassRef<IOError> ReadIsBlocked() = 0;
 
   // Signal to the underlying poller that a write operation would block. This
   // is useful when using I/O operations outside of the scope of the ones
   // provided by AMIO, for example, recvmsg() or sendmsg(), and EAGAIN or
   // EWOULDBLOCK is returned.
-  virtual void WriteIsBlocked() = 0;
+  //
+  // It is not necessary to call this if the write event is enabled for the
+  // transport.
+  virtual PassRef<IOError> WriteIsBlocked() = 0;
 
   // Internal function to cast transports to their underlying type.
   virtual PosixTransport *toPosixTransport() = 0;
@@ -114,11 +126,13 @@ class AMIO_LINK StatusListener : public ke::IRefcounted
   virtual ~StatusListener()
   {}
 
-  // Called when data is available for non-blocking reading.
+  // Called when data is available for non-blocking reading. Always invoked
+  // on the polling thread.
   virtual void OnReadReady(ke::Ref<Transport> transport)
   {}
 
-  // Called when data is available for non-blocking sending.
+  // Called when data is available for non-blocking sending. Always invoked
+  // on the polling thread.
   virtual void OnWriteReady(ke::Ref<Transport> transport)
   {}
 
@@ -142,7 +156,7 @@ class AMIO_LINK StatusListener : public ke::IRefcounted
 // Defined later.
 class Poller;
 
-// A poller is responsible for polling for events. It is not thread-safe.
+// A poller is responsible for polling for events.
 class AMIO_LINK Poller : public ke::IRefcounted
 {
  public:
@@ -159,7 +173,9 @@ class AMIO_LINK Poller : public ke::IRefcounted
   // An error is returned if the poll itself failed; individual read/write
   // failures are propagated through status listeners.
   //
-  // Poll() is not re-entrant.
+  // Poll() is not re-entrant. It may be called from other threads, though in
+  // all current posix implementations this will block all but one call to
+  // Poll().
   virtual PassRef<IOError> Poll(int timeoutMs = kNoTimeout) = 0;
 
   // Interrupt a poll operation. The active poll operation will return an error.
@@ -176,6 +192,8 @@ class AMIO_LINK Poller : public ke::IRefcounted
   // Because Read() and Write() automatically watch for events, it is not
   // necessary to pass any event flags here as long one of those will be
   // called.
+  //
+  // This function is thread-safe.
   virtual PassRef<IOError> Attach(
     Ref<Transport> transport,
     Ref<StatusListener> listener,
@@ -186,6 +204,9 @@ class AMIO_LINK Poller : public ke::IRefcounted
   // transport is closed, a status error or hangup is generated, or a Read()
   // operation returns Ended. It is safe to deregister a transport multiple
   // times.
+  //
+  // This function is thread-safe, though if an event has already been deqeued
+  // it may still fire as the Detach completes.
   virtual void Detach(Ref<Transport> transport) = 0;
 
   // Changes the polled events on a transport. This is only valid for level-
@@ -196,7 +217,16 @@ class AMIO_LINK Poller : public ke::IRefcounted
   //
   // NB: This is provided so embedders can simulate edge-triggering as needed;
   // thus, there is no edge-triggered equivalent.
+  //
+  // This function is thread-safe.
   virtual PassRef<IOError> ChangeStickyEvents(Ref<Transport> transport, EventFlags eventMask) = 0;
+
+  // Enables thread-safety on the poller. By default, pollers and attached
+  // transports can only be used from one thread at a time.
+  virtual void EnableThreadSafety() = 0;
+
+  // Shuts down the poller.
+  virtual void Shutdown() = 0;
 };
 
 #if defined(KE_BSD) || defined(KE_LINUX) || defined(KE_SOLARIS)
@@ -226,8 +256,9 @@ class AMIO_LINK PollerFactory
 #endif
 
 #if defined(KE_LINUX)
-  // Create a message pump based on epoll(). By default maxEventsPerPoll is 
-  // 256, when used through CreatePoller(). Use 0 for the default.
+  // Create a message pump based on epoll(). If maxEventsPerPoll is 0, then
+  // the events per poll will be automatically sized. Otherwise, it will be
+  // capped to the given value.
   //
   // epoll() is chosen by CreatePoller by default for Linux 2.5.44+, as it is
   // considered the most efficient polling mechanism and has native edge-
@@ -276,8 +307,19 @@ enum AMIO_LINK TransportFlags
   // the transport does not own the descriptor.
   kTransportNoCloseOnExec = 0x00000002,
 
-  kTransportDefaultFlags  = 0x00000000
+  // Internal flags. These must have the same values as their event
+  // counterparts.
+  kTransportReading       = 0x00000004,
+  kTransportWriting       = 0x00000008,
+  kTransportSticky        = 0x00000010,
+  kTransportEventMask     = kTransportReading | kTransportWriting,
+  kTransportClearMask     = kTransportEventMask|kTransportSticky,
+  kTransportUserFlagMask  = kTransportNoAutoClose|kTransportNoCloseOnExec,
+
+  kTransportNoFlags       = 0x00000000,
+  kTransportDefaultFlags  = kTransportNoFlags
 };
+KE_DEFINE_ENUM_OPERATORS(TransportFlags)
 
 class AMIO_LINK TransportFactory
 {

@@ -37,10 +37,12 @@ class GenericError : public IOError
 
 extern ke::Ref<GenericError> eOutOfMemory;
 extern ke::Ref<GenericError> eUnknownHangup;
+extern ke::Ref<GenericError> eTransportNotAttached;
 extern ke::Ref<GenericError> eTransportAlreadyAttached;
 extern ke::Ref<GenericError> eTransportClosed;
 extern ke::Ref<GenericError> eUnsupportedAddressFamily;
 extern ke::Ref<GenericError> eUnsupportedProtocol;
+extern ke::Ref<GenericError> ePollerShutdown;
 
 } // namespace amio
 

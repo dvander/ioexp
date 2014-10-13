@@ -18,6 +18,8 @@ ke::Ref<GenericError> amio::eUnknownHangup = new GenericError("unknown hangup");
 ke::Ref<GenericError> amio::eTransportClosed = new GenericError("transport is closed");
 ke::Ref<GenericError> amio::eUnsupportedAddressFamily = new GenericError("unsupported address family");
 ke::Ref<GenericError> amio::eUnsupportedProtocol = new GenericError("unsupported protocol");
+ke::Ref<GenericError> amio::ePollerShutdown = new GenericError("poller has been shutdown");
+ke::Ref<GenericError> amio::eTransportNotAttached = new GenericError("transport is not attached");
 
 #if !defined(KE_CXX11)
 const ErrorType ErrorType::System = {0};

@@ -38,8 +38,16 @@ TransportFactory::CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp, T
   if (pipe(fds) == -1)
     return new PosixError();
 
-  *readerp = new PosixTransport(fds[0], kTransportDefaultFlags);
-  *writerp = new PosixTransport(fds[1], kTransportDefaultFlags);
+  Ref<PosixTransport> reader = new PosixTransport(fds[0], kTransportDefaultFlags);
+  if (Ref<IOError> error = reader->Setup())
+    return error;
+
+  Ref<PosixTransport> writer = new PosixTransport(fds[1], kTransportDefaultFlags);
+  if (Ref<IOError> error = writer->Setup())
+    return error;
+
+  *readerp = reader;
+  *writerp = writer;
   return nullptr;
 }
 

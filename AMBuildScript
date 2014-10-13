@@ -154,6 +154,7 @@ class KEConfig:
     elif builder.target_platform == 'mac':
       cfg.linkflags += [
         '-mmacosx-version-min=10.5',
+        '-lpthread',
       ]
     elif builder.target_platform == 'windows':
       cfg.defines += ['WIN32', '_WINDOWS']
@@ -172,7 +173,10 @@ class KEConfig:
 
     self.pkg_linkflags = []
     if builder.target_platform == 'solaris':
-      self.pkg_linkflags += ['-lpthread', '-lsocket', '-lnsl']
+      self.pkg_linkflags += ['-lsocket', '-lnsl']
+
+    if builder.target_platform != 'windows':
+      self.pkg_linkflags += ['-lpthread']
 
 KE = KEConfig()
 KE.setup()

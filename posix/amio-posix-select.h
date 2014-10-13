@@ -29,28 +29,30 @@ class SelectImpl : public PosixPoller
   ~SelectImpl();
 
   PassRef<IOError> Poll(int timeoutMs) override;
-  PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
-  void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
-  PassRef<IOError> ChangeStickyEvents(Ref<Transport> transport, EventFlags eventMask) override;
+  void Shutdown() override;
 
-  PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
-  PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
-  void unhook(PosixTransport *transport) override;
+  PassRef<IOError> attach_locked(
+    PosixTransport *transport,
+    StatusListener *listener,
+    TransportFlags flags) override;
+  void detach_locked(PosixTransport *transport) override;
+  PassRef<IOError> change_events_locked(PosixTransport *transport, TransportFlags flags) override;
 
  private:
   bool isFdChanged(int fd) const {
     return fds_[fd].modified == generation_;
   }
 
-  template <EventFlags outFlag>
+  void select_ctl(int fd, TransportFlags flags);
+
+  template <TransportFlags outFlag>
   inline void handleEvent(fd_set *set, int fd);
 
  private:
   struct SelectData {
     Ref<PosixTransport> transport;
     uintptr_t modified;
-    EventFlags flags;
 
     SelectData() : modified(0)
     {}

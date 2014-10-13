@@ -34,29 +34,30 @@ class PollImpl : public PosixPoller
 
   PassRef<IOError> Initialize();
   PassRef<IOError> Poll(int timeoutMs) override;
-  PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
-  void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
-  PassRef<IOError> ChangeStickyEvents(Ref<Transport> transport, EventFlags eventMask) override;
+  void Shutdown() override;
 
-  PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
-  PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
-  void unhook(PosixTransport *transport) override;
+  PassRef<IOError> attach_locked(
+    PosixTransport *transport,
+    StatusListener *listener,
+    TransportFlags flags) override;
+  void detach_locked(PosixTransport *transport) override;
+  PassRef<IOError> change_events_locked(PosixTransport *transport, TransportFlags flags) override;
 
  private:
+  void poll_ctl(size_t slot, TransportFlags flags);
+
   bool isFdChanged(int fd) const {
     return fds_[fd].modified == generation_;
   }
 
-  template <int inFlag, EventFlags outFlag>
+  template <int inFlag, TransportFlags outFlag>
   inline void handleEvent(size_t event_idx, int fd);
 
  private:
   struct PollData {
     Ref<PosixTransport> transport;
-    size_t slot;
     uintptr_t modified;
-    EventFlags flags;
 
     PollData() : modified(0)
     {}
@@ -66,9 +67,11 @@ class PollImpl : public PosixPoller
   bool can_use_rdhup_;
 #endif
   uintptr_t generation_;
-  ke::Vector<struct pollfd> poll_events_;
-  ke::Vector<PollData> fds_;
-  ke::Vector<size_t> free_slots_;
+  Vector<struct pollfd> poll_events_;
+  Vector<PollData> fds_;
+  Vector<size_t> free_slots_;
+  AutoPtr<struct pollfd> tmp_buffer_;
+  size_t tmp_buffer_len_;
 };
 
 } // namespace amio

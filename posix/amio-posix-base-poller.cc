@@ -17,48 +17,138 @@ using namespace ke;
 using namespace amio;
 
 PassRef<IOError>
-PosixPoller::toPosixTransport(PosixTransport **outp, Transport *baseTransport)
+PosixPoller::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, EventFlags eventMask)
 {
-  if ((*outp = baseTransport->toPosixTransport()) == nullptr)
+  PosixTransport *transport = baseTransport->toPosixTransport();
+  if (!transport)
     return eIncompatibleTransport;
-  if ((*outp)->pump())
+
+  AutoMaybeLock lock(lock_);
+  if (transport->attached())
     return eTransportAlreadyAttached;
-  if ((*outp)->fd() == -1)
+  if (transport->fd() == -1)
     return eTransportClosed;
-  return nullptr;
+
+  assert(listener);
+  assert(int(Event_Read) == int(kTransportReading));
+  assert(int(Event_Write) == int(kTransportWriting));
+  assert(int(Event_Sticky) == int(kTransportSticky));
+
+  return attach_locked(transport, listener, TransportFlags(eventMask));
 }
 
 void
-PosixPoller::reportHup(Ref<PosixTransport> transport)
+PosixPoller::Detach(Ref<Transport> baseTransport)
+{
+  PosixTransport *transport = baseTransport->toPosixTransport();
+  if (!transport)
+    return;
+
+  // We must acquire the lock before checking the poller, since we could be
+  // detaching on another thread.
+  AutoMaybeLock lock(lock_);
+  if (transport->poller() != this)
+    return;
+
+  detach_locked(transport);
+}
+
+PassRef<IOError>
+PosixPoller::ChangeStickyEvents(Ref<Transport> baseTransport, EventFlags eventMask)
+{
+  Ref<PosixTransport> transport(baseTransport->toPosixTransport());
+  if (!transport)
+    return eIncompatibleTransport;
+
+  AutoMaybeLock lock(lock_);
+  if (transport->poller() != this)
+    return eIncompatibleTransport;
+  if (transport->fd() == -1)
+    return eTransportClosed;
+  if (!(transport->flags() & kTransportSticky))
+    return eIncompatibleTransport;
+  if (!(eventMask & Event_Sticky))
+    return eIncompatibleTransport;
+
+  TransportFlags flags = kTransportNoFlags;
+  if (eventMask & Event_Read)
+    flags |= kTransportReading;
+  if (eventMask & Event_Write)
+    flags |= kTransportWriting;
+
+  // Check if the events are the same.
+  if ((transport->flags() & kTransportEventMask) == flags)
+    return nullptr;
+
+  return change_events_unlocked(transport, flags|kTransportSticky);
+}
+
+void
+PosixPoller::detach_unlocked(PosixTransport *transport)
+{
+  AutoMaybeLock lock(lock_);
+
+  if (transport->poller() != this)
+    return;
+
+  detach_locked(transport);
+}
+
+PassRef<IOError>
+PosixPoller::change_events_unlocked(PosixTransport *transport, TransportFlags flags)
+{
+  AutoMaybeLock lock(lock_);
+
+  if (transport->poller() != this)
+    return eIncompatibleTransport;
+
+  return change_events_locked(transport, flags);
+}
+
+PassRef<IOError>
+PosixPoller::add_events_unlocked(PosixTransport *transport, TransportFlags flags)
+{
+  AutoMaybeLock lock(lock_);
+
+  if (transport->poller() != this)
+    return eIncompatibleTransport;
+
+  return change_events_locked(transport, transport->flags() | flags);
+}
+
+// This is called within the poll lock.
+void
+PosixPoller::reportHup_locked(Ref<PosixTransport> transport)
 {
   // Get a local copy of the listener before we wipe it out.
   Ref<StatusListener> listener = transport->listener();
-  unhook(transport);
+  detach_locked(transport);
+
+  AutoMaybeUnlock unlock(lock_);
   listener->OnHangup(transport);
 }
 
 void
-PosixPoller::reportError(Ref<PosixTransport> transport)
+PosixPoller::reportError_locked(Ref<PosixTransport> transport)
 {
-  reportError(transport, eUnknownHangup);
+  reportError_locked(transport, eUnknownHangup);
 }
 
+// This is called within the poll lock.
 void
-PosixPoller::reportError(Ref<PosixTransport> transport, Ref<IOError> error)
+PosixPoller::reportError_locked(Ref<PosixTransport> transport, Ref<IOError> error)
 {
   // Get a local copy of the listener before we wipe it out.
   Ref<StatusListener> listener = transport->listener();
-  unhook(transport);
+  detach_locked(transport);
+
+  AutoMaybeUnlock unlock(lock_);
   listener->OnError(transport, error);
 }
 
-PassRef<PosixTransport>
-PosixPoller::validateEventChange(Ref<Transport> baseTransport, EventFlags eventMask)
+void
+PosixPoller::EnableThreadSafety()
 {
-  Ref<PosixTransport> transport(baseTransport->toPosixTransport());
-  if (!transport || transport->pump() != this || transport->fd() == -1)
-    return nullptr;
-  if (!(eventMask & Event_Sticky))
-    return nullptr;
-  return transport;
+  lock_ = new Mutex();
+  poll_lock_ = new Mutex();
 }

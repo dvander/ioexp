@@ -12,6 +12,7 @@
 #include "posix/amio-posix-poll.h"
 #include "linux/amio-linux.h"
 #include <sys/poll.h>
+#include <string.h>
 
 #if defined(__linux__) && !defined(POLLRDHUP)
 # define POLLRDHUP 0x2000
@@ -23,7 +24,8 @@ using namespace amio;
 static const size_t kInitialPollSize = 4096;
 
 PollImpl::PollImpl()
- : generation_(0)
+ : generation_(0),
+   tmp_buffer_len_(0)
 {
 #if defined(__linux__)
   can_use_rdhup_ = false;
@@ -34,6 +36,14 @@ PollImpl::PollImpl()
 
 PollImpl::~PollImpl()
 {
+  Shutdown();
+}
+
+void
+PollImpl::Shutdown()
+{
+  AutoMaybeLock lock(lock_);
+
   for (size_t i = 0; i < poll_events_.length(); i++) {
     int fd = poll_events_[i].fd;
     if (fd == -1)
@@ -55,32 +65,19 @@ PollImpl::Initialize()
 }
 
 PassRef<IOError>
-PollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, EventFlags eventMask)
+PollImpl::attach_locked(PosixTransport *transport, StatusListener *listener, TransportFlags flags)
 {
-  PosixTransport *transport;
-  Ref<IOError> error = toPosixTransport(&transport, baseTransport);
-  if (error)
-    return error;
-
   if (size_t(transport->fd()) >= fds_.length()) {
     if (!fds_.resize(transport->fd() + 1))
       return eOutOfMemory;
   }
-
-  assert(listener);
   assert(size_t(transport->fd()) < fds_.length());
 
-  // By default we wait for reads (see the comment in the select pump).
   int defaultEvents = POLLERR | POLLHUP;
 #if defined(__linux__)
   if (can_use_rdhup_)
     defaultEvents |= POLLRDHUP;
 #endif
-
-  if (eventMask & Event_Read)
-    defaultEvents |= POLLIN;
-  if (eventMask & Event_Write)
-    defaultEvents |= POLLOUT;
 
   size_t slot;
   struct pollfd pe;
@@ -94,157 +91,24 @@ PollImpl::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, Eve
     slot = free_slots_.popCopy();
     poll_events_[slot] = pe;
   }
+  poll_ctl(slot, flags);
 
   transport->attach(this, listener);
+  transport->flags() |= flags;
+  transport->setUserData(slot);
   fds_[transport->fd()].transport = transport;
-  fds_[transport->fd()].slot = slot;
   fds_[transport->fd()].modified = generation_;
-  fds_[transport->fd()].flags = eventMask;
-  return nullptr;
-}
-
-PassRef<IOError>
-PollImpl::ChangeStickyEvents(Ref<Transport> baseTransport, EventFlags eventMask)
-{
-  Ref<PosixTransport> transport = validateEventChange(baseTransport, eventMask);
-  if (!transport)
-    return eIncompatibleTransport;
-
-  int fd = transport->fd();
-  if (!(fds_[fd].flags & Event_Sticky))
-    return eIncompatibleTransport;
-
-  size_t slot = fds_[fd].slot;
-  poll_events_[slot].events &= ~(POLLIN|POLLOUT);
-  if (eventMask & Event_Read)
-    poll_events_[slot].events |= POLLIN;
-  if (eventMask & Event_Write)
-    poll_events_[slot].events |= POLLOUT;
-
-  fds_[fd].flags = eventMask;
   return nullptr;
 }
 
 void
-PollImpl::Detach(Ref<Transport> baseTransport)
-{
-  Ref<PosixTransport> transport(baseTransport->toPosixTransport());
-  if (!transport || transport->pump() != this || transport->fd() == -1)
-    return;
-
-  unhook(transport);
-}
-
-template <int inFlag, EventFlags outFlag>
-inline void
-PollImpl::handleEvent(size_t event_idx, int fd)
-{
-  if (fds_[fd].flags & Event_Sticky) {
-    // Ignore - the event's been changed.
-    if (!(fds_[fd].flags & outFlag))
-      return;
-  } else {
-    // Unset to emulate edge-triggered behavior.
-    poll_events_[event_idx].events &= ~inFlag;
-  }
-
-  if (outFlag == Event_Read)
-    fds_[fd].transport->listener()->OnReadReady(fds_[fd].transport);
-  else if (outFlag == Event_Write)
-    fds_[fd].transport->listener()->OnWriteReady(fds_[fd].transport);
-}
-
-PassRef<IOError>
-PollImpl::Poll(int timeoutMs)
-{
-  int nevents = poll(poll_events_.buffer(), poll_events_.length(), timeoutMs);
-  if (nevents == -1)
-    return new PosixError();
-  if (nevents == 0)
-    return nullptr;
-
-  generation_++;
-  for (size_t i = 0; i < poll_events_.length() && nevents > 0; i++) {
-    int revents = poll_events_[i].revents;
-    if (revents == 0)
-      continue;
-
-    int fd = poll_events_[i].fd;
-    nevents--;
-
-    // We have to check this in case the list changes during iteration.
-    if (isFdChanged(fd))
-      continue;
-
-    // Handle errors first.
-    if (revents & POLLERR) {
-      reportError(fds_[fd].transport);
-      continue;
-    }
-
-    // Prioritize POLLIN over POLLHUP/POLLRDHUP.
-    if (revents & POLLIN) {
-      handleEvent<POLLIN, Event_Read>(i, fd);
-      if (isFdChanged(fd))
-        continue;
-    }
-
-    // Handle explicit hangup.
-#if defined(__linux__)
-    if (revents & (POLLRDHUP|POLLHUP)) {
-#else
-    if (revents & POLLHUP) {
-#endif
-      reportHup(fds_[fd].transport);
-      continue;
-    }
-
-    // Handle output.
-    if (revents & POLLOUT)
-      handleEvent<POLLOUT, Event_Write>(i, fd);
-  }
-
-  return nullptr;
-}
-
-void
-PollImpl::Interrupt()
-{
-  // NYI
-  abort();
-}
-
-PassRef<IOError>
-PollImpl::onReadWouldBlock(PosixTransport *transport)
-{
-  int fd = transport->fd();
-  size_t slot = fds_[fd].slot;
-  assert(poll_events_[slot].fd == fd);
-
-  poll_events_[slot].events |= POLLIN;
-  return nullptr;
-}
-
-PassRef<IOError>
-PollImpl::onWriteWouldBlock(PosixTransport *transport)
-{
-  int fd = transport->fd();
-  size_t slot = fds_[fd].slot;
-  assert(poll_events_[slot].fd == fd);
-
-  poll_events_[slot].events |= POLLOUT;
-  return nullptr;
-}
-
-void
-PollImpl::unhook(PosixTransport *transport)
+PollImpl::detach_locked(PosixTransport *transport)
 {
   int fd = transport->fd();
   assert(fd != -1);
   assert(fds_[fd].transport == transport);
-  assert(transport->pump() == this);
 
-  size_t slot = fds_[fd].slot;
+  size_t slot = transport->getUserData();
   assert(poll_events_[slot].fd == fd);
 
   // Note: just for safety, we call this after we're done with the transport,
@@ -255,4 +119,143 @@ PollImpl::unhook(PosixTransport *transport)
   fds_[fd].transport = nullptr;
   fds_[fd].modified = generation_;
   free_slots_.append(slot);
+}
+
+PassRef<IOError>
+PollImpl::change_events_locked(PosixTransport *transport, TransportFlags flags)
+{
+  size_t slot = transport->getUserData();
+  poll_ctl(slot, flags);
+  transport->flags() &= ~kTransportEventMask;
+  transport->flags() |= flags;
+  return nullptr;
+}
+
+void
+PollImpl::poll_ctl(size_t slot, TransportFlags flags)
+{
+  poll_events_[slot].events &= ~(POLLIN|POLLOUT);
+  if (flags & kTransportReading)
+    poll_events_[slot].events |= POLLIN;
+  if (flags & kTransportWriting)
+    poll_events_[slot].events |= POLLOUT;
+}
+
+template <int inFlag, TransportFlags outFlag>
+inline void
+PollImpl::handleEvent(size_t event_idx, int fd)
+{
+  Ref<PosixTransport> transport = fds_[fd].transport;
+  if (transport->flags() & kTransportSticky) {
+    // Ignore - the event's been changed.
+    if (!(transport->flags() & outFlag))
+      return;
+  } else {
+    // Unset to emulate edge-triggered behavior.
+    poll_events_[event_idx].events &= ~inFlag;
+    transport->flags() &= ~outFlag;
+  }
+
+  // We must hold the listener in a ref, since if the transport is detached
+  // in the callback, it could be destroyed while |this| is still on the
+  // stack. Similarly, we must hold the transport in a ref in case releasing
+  // the lock allows a detach to happen.
+  Ref<StatusListener> listener = transport->listener();
+
+  AutoMaybeUnlock unlock(lock_);
+  if (outFlag == kTransportReading)
+    listener->OnReadReady(transport);
+  else if (outFlag == kTransportWriting)
+    listener->OnWriteReady(transport);
+}
+
+PassRef<IOError>
+PollImpl::Poll(int timeoutMs)
+{
+  // We acquire a lock specifically for Poll(), to make sure it isn't called on
+  // any thread or within callbacks.
+  AutoMaybeLock poll_lock(poll_lock_);
+
+  size_t poll_buffer_len;
+  struct pollfd *poll_buffer;
+  if (lock_) {
+    // We need to the copy poll buffer; otherwise, we could mutate the buffer
+    // while poll() is operating, and locking over poll() could trivially lead
+    // to deadlocks.
+    AutoMaybeLock lock(lock_);
+
+    if (tmp_buffer_len_ < poll_events_.length()) {
+      struct pollfd *new_buffer = new struct pollfd[poll_events_.length()];
+      if (!new_buffer)
+        return eOutOfMemory;
+      tmp_buffer_ = new_buffer;
+      tmp_buffer_len_ = poll_events_.length();
+      memcpy(tmp_buffer_, poll_events_.buffer(), sizeof(struct pollfd) * tmp_buffer_len_);
+    }
+
+    poll_buffer = tmp_buffer_;
+    poll_buffer_len = tmp_buffer_len_;
+  } else {
+    poll_buffer = poll_events_.buffer();
+    poll_buffer_len = poll_events_.length();
+  }
+
+  int nevents = poll(poll_buffer, poll_buffer_len, timeoutMs);
+  if (nevents == -1)
+    return new PosixError();
+  if (nevents == 0)
+    return nullptr;
+
+  // Now we acquire the transport lock.
+  AutoMaybeLock lock(lock_);
+
+  generation_++;
+  for (size_t i = 0; i < poll_buffer_len && nevents > 0; i++) {
+    int revents = poll_buffer[i].revents;
+    if (revents == 0)
+      continue;
+
+    int fd = poll_buffer[i].fd;
+    nevents--;
+
+    // We have to check this in case the list changes during iteration.
+    if (isFdChanged(fd))
+      continue;
+
+    // Handle errors first.
+    if (revents & POLLERR) {
+      reportError_locked(fds_[fd].transport);
+      continue;
+    }
+
+    // Prioritize POLLIN over POLLHUP/POLLRDHUP.
+    if (revents & POLLIN) {
+      handleEvent<POLLIN, kTransportReading>(i, fd);
+      if (isFdChanged(fd))
+        continue;
+    }
+
+    // Handle explicit hangup.
+#if defined(__linux__)
+    if (revents & (POLLRDHUP|POLLHUP)) {
+#else
+    if (revents & POLLHUP) {
+#endif
+      reportHup_locked(fds_[fd].transport);
+      continue;
+    }
+
+    // Handle output.
+    if (revents & POLLOUT)
+      handleEvent<POLLOUT, kTransportWriting>(i, fd);
+  }
+
+  return nullptr;
+}
+
+void
+PollImpl::Interrupt()
+{
+  // NYI
+  abort();
 }

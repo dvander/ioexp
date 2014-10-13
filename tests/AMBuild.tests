@@ -37,6 +37,7 @@ if builder.target_platform == 'windows':
 else:
   runner.sources += [
     'posix/test-pipes.cc',
+    'posix/test-threading.cc',
   ]
 
 if builder.target_platform == 'linux':
@@ -51,6 +52,6 @@ elif builder.target_platform == 'solaris':
   runner.sources += [
     'test-solaris.cc',
   ]
-  runner.compiler.linkflags += KE.pkg_linkflags
+runner.compiler.linkflags += KE.pkg_linkflags
 
 builder.Add(runner)

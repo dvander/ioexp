@@ -195,7 +195,7 @@ class PosixConnectionT : public PosixConnection
 class ConnectOp
  : public StatusListener,
    public Operation,
-   public ke::Refcounted<ConnectOp>
+   public ke::RefcountedThreadsafe<ConnectOp>
 {
  public:
   ConnectOp(Ref<PosixConnection> conn, Ref<Client::Listener> listener, EventFlags events)
@@ -206,16 +206,12 @@ class ConnectOp
   }
 
   void AddRef() override {
-    ke::Refcounted<ConnectOp>::AddRef();
+    ke::RefcountedThreadsafe<ConnectOp>::AddRef();
   }
   void Release() override {
-    ke::Refcounted<ConnectOp>::Release();
+    ke::RefcountedThreadsafe<ConnectOp>::Release();
   }
   void Cancel() override {
-    // Check that the pump hasn't shutdown.
-    if (!conn_->pump() || conn_->Closed())
-      return;
-
     // This should throw an error through the poller, which we just ignore.
     conn_->Close();
     Finish();
@@ -241,20 +237,15 @@ class ConnectOp
       return;
     }
 
-    if (events_ & Event_Sticky) {
-      if (Ref<IOError> error = conn_->pump()->ChangeStickyEvents(conn_, events_)) {
-        reportError(error);
-        return;
-      }
-    } else {
-      // We can't change edge-triggered events... but we've just consumed the
-      // write event, so we all need to do is trigger the read if requested.
-      if (events_ & Event_Read) {
-        if (Ref<IOError> error = conn_->pump()->onReadWouldBlock(conn_)) {
-          reportError(error);
-          return;
-        }
-      }
+    TransportFlags flags = (events_ & Event_Sticky) ? kTransportSticky : kTransportNoFlags;
+    if (events_ & Event_Read)
+      flags |= kTransportReading;
+    if (events_ & Event_Write)
+      flags |= kTransportWriting;
+
+    if (Ref<IOError> error = conn_->poller()->change_events_unlocked(conn_, flags)) {
+      reportError(error);
+      return;
     }
 
     conn_->changeListener(listener_);
@@ -399,7 +390,7 @@ amio::net::ConnectTo(Ref<Connection> *outp, Protocol protocol, Ref<Address> addr
 class PosixServer
  : public Server,
    public StatusListener,
-   public ke::Refcounted<PosixServer>
+   public ke::RefcountedThreadsafe<PosixServer>
 {
  public:
   PosixServer(Ref<PosixTransport> transport, Ref<Server::Listener> listener, Ref<Address> address)
@@ -415,10 +406,10 @@ class PosixServer
   }
 
   void AddRef() override {
-    ke::Refcounted<PosixServer>::AddRef();
+    ke::RefcountedThreadsafe<PosixServer>::AddRef();
   }
   void Release() override {
-    ke::Refcounted<PosixServer>::Release();
+    ke::RefcountedThreadsafe<PosixServer>::Release();
   }
 
   void OnReadReady(Ref<Transport> server) override {
