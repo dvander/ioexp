@@ -27,5 +27,5 @@ PollerFactory::CreateKqueueImpl(Ref<Poller> *outp, size_t maxEventsPerPoll)
 PassRef<IOError>
 PollerFactory::CreatePoller(Ref<Poller> *outp)
 {
-  return CreateKqueueImpl(outp, kDefaultMaxEventsPerPoll);
+  return CreateKqueueImpl(outp);
 }

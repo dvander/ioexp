@@ -22,24 +22,23 @@ namespace amio {
 
 using namespace ke;
 
-static const size_t kDefaultMaxEventsPerPoll = 256;
-
 class KqueueImpl : public PosixPoller
 {
  public:
-  KqueueImpl(size_t maxEvents = kDefaultMaxEventsPerPoll);
+  KqueueImpl(size_t maxEvents = 0);
   ~KqueueImpl();
 
   PassRef<IOError> Initialize();
   PassRef<IOError> Poll(int timeoutMs) override;
-  PassRef<IOError> Attach(Ref<Transport> transport, Ref<StatusListener> listener, EventFlags eventMask) override;
-  void Detach(Ref<Transport> baseTransport) override;
   void Interrupt() override;
-  PassRef<IOError> ChangeStickyEvents(Ref<Transport> baseTransport, EventFlags eventMask);
+  void Shutdown() override;
 
-  PassRef<IOError> onReadWouldBlock(PosixTransport *transport) override;
-  PassRef<IOError> onWriteWouldBlock(PosixTransport *transport) override;
-  void unhook(PosixTransport *transport) override;
+  PassRef<IOError> attach_locked(
+    PosixTransport *transport,
+    StatusListener *listener,
+    TransportFlags flags) override;
+  void detach_locked(PosixTransport *transport) override;
+  PassRef<IOError> change_events_locked(PosixTransport *transport, TransportFlags flags) override;
 
  private:
   bool isFdChanged(size_t slot) const {
@@ -50,8 +49,6 @@ class KqueueImpl : public PosixPoller
   struct PollData {
     Ref<PosixTransport> transport;
     size_t modified;
-    struct kevent read;
-    struct kevent write;
   };
 
   int kq_;
@@ -60,6 +57,7 @@ class KqueueImpl : public PosixPoller
   ke::Vector<size_t> free_slots_;
 
   size_t max_events_;
+  size_t absolute_max_events_;
   ke::AutoArray<struct kevent> event_buffer_;
 };
 

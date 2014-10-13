@@ -226,10 +226,10 @@ EpollImpl::Poll(int timeoutMs)
       handleEvent<kTransportWriting>(slot);
   }
 
-  if (!absolute_max_events_ &&
-      size_t(nevents) == max_events_ &&
-      max_events_ < (INT_MAX / 2))
-  {
+  // If we filled the event buffer, resize it for next time.
+  if (!absolute_max_events_ && size_t(nevents) == max_events_ && max_events_ < (INT_MAX / 2)) {
+    AutoMaybeUnlock unlock(lock_);
+
     size_t new_size = max_events_ * 2;
     epoll_event *new_buffer = new epoll_event[new_size];
     if (new_buffer) {

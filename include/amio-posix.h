@@ -265,8 +265,9 @@ class AMIO_LINK PollerFactory
   // triggering.
   static PassRef<IOError> CreateEpollImpl(Ref<Poller> *outp, size_t maxEventsPerPoll = 0);
 #elif defined(KE_BSD)
-  // Create a message pump based on kqueue(). By default maxEventsPerPoll is
-  // 256, when used through CreatePoller(). Use 0 for the default.
+  // Create a message pump based on kqueue(). If maxEventsPerPoll is 0, then
+  // the events per poll will be automatically sized. Otherwise, it will be
+  // capped to the given value.
   //
   // kqueue() is chosen by CreatePoller by default for BSD (as it is
   // considered the most efficient polling mechanism and has native edge-
