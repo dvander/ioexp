@@ -198,12 +198,10 @@ class ConnectOp
    public ke::RefcountedThreadsafe<ConnectOp>
 {
  public:
-  ConnectOp(Ref<PosixConnection> conn, Ref<Client::Listener> listener,
-            Events events, EventMode mode)
+  ConnectOp(Ref<PosixConnection> conn, Ref<Client::Listener> listener, Events events)
    : conn_(conn),
      listener_(listener),
-     events_(events),
-     mode_(mode)
+     events_(events)
   {
   }
 
@@ -264,7 +262,6 @@ class ConnectOp
   Ref<PosixConnection> conn_;
   Ref<Client::Listener> listener_;
   Events events_;
-  EventMode mode_;
 };
 
 // Note: the fd is automatically closed on error, since we assume the fd has
@@ -320,7 +317,7 @@ Client::Create(Result *result, Ref<Poller> poller,
     return nullptr;
   }
 
-  Ref<ConnectOp> op = new ConnectOp(conn, listener, events, mode);
+  Ref<ConnectOp> op = new ConnectOp(conn, listener, events);
   if (Ref<IOError> error = poller->Attach(conn, op, Events::Write, mode))
     return error;
 

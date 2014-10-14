@@ -106,7 +106,7 @@ KqueueImpl::change_events_locked(PosixTransport *transport, TransportFlags flags
   int nchanges = 0;
   struct kevent changes[2];
 
-  int extra = (flags & kTransportSticky) ? 0 : EV_CLEAR;
+  int extra = (flags & kTransportET) ? EV_CLEAR : 0;
 
   if ((flags & kTransportReading) != (transport->flags() & kTransportReading)) {
     if (flags & kTransportReading)

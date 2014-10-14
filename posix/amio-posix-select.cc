@@ -160,6 +160,7 @@ SelectImpl::Poll(int timeoutMs)
   }
 
   fd_set read_fds, write_fds;
+  size_t fd_watermark;
 
   // Copy the descriptor maps. Do this in a lock, so we don't have to hold the
   // transport lock while polling.
@@ -167,16 +168,17 @@ SelectImpl::Poll(int timeoutMs)
     AutoMaybeLock lock(lock_);
     read_fds = read_fds_;
     write_fds = write_fds_;
+    fd_watermark = fd_watermark_;
   }
 
-  int result = select(fd_watermark_ + 1, &read_fds, &write_fds, nullptr, timeoutp);
+  int result = select(fd_watermark + 1, &read_fds, &write_fds, nullptr, timeoutp);
   if (result == -1)
     return new PosixError();
 
   AutoMaybeLock lock(lock_);
 
   generation_++;
-  for (int i = 0; i <= fd_watermark_; i++) {
+  for (int i = 0; i <= fd_watermark; i++) {
     // Make sure this transport wasn't swapped out or removed.
     if (isFdChanged(i))
       continue;
