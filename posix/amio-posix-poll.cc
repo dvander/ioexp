@@ -146,7 +146,7 @@ inline void
 PollImpl::handleEvent(size_t event_idx, int fd)
 {
   Ref<PosixTransport> transport = fds_[fd].transport;
-  if (transport->flags() & kTransportSticky) {
+  if (transport->flags() & kTransportLT) {
     // Ignore - the event's been changed.
     if (!(transport->flags() & outFlag))
       return;

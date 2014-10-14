@@ -41,10 +41,13 @@ struct AMIO_LINK IOResult
 };
 
 // Describes a low-level transport mechanism used in Posix. This is essentially
-// a wrapper around a file descriptor. Functions on a transport are thread-safe
-// with respect to operations on a poller, unless otherwise noted.
+// a wrapper around a file descriptor. Transports and their interactions with
+// pollers are thread-safe, however, most operations are not atomic. For
+// example, a Read() event on one thread can race with a ChangeEvents() call on
+// another thread and lose an event. It is the user's responsiblity to
+// synchronize as needed.
 // 
-// I/O operations may have undefined behavior if used on multiple threads; for
+// I/O operations may have undefined behavior if used on multiple threads. For
 // example, it is inadvisable to have two threads writing to a stream at the
 // same time.
 class AMIO_LINK Transport : public ke::IRefcounted
@@ -97,22 +100,18 @@ class AMIO_LINK Transport : public ke::IRefcounted
   // Returns whether or not the transport has been closed.
   virtual bool Closed() const = 0;
 
+  // ETS event polling only.
+  //
   // Signal to the underlying poller that a read operation would block. This
-  // is useful when using I/O operations outside of the scope of the ones
-  // provided by AMIO, for example, recvmsg() or sendmsg(), and EAGAIN or
-  // EWOULDBLOCK is returned.
-  // 
-  // It is not necessary to call this if the read event is enabled for the
-  // transport.
+  // is needed in ETS mode when I/O operations outside of AMIO return EAGAIN or
+  // EWOULDBLOCK is returned. For example, recvmsg().
   virtual PassRef<IOError> ReadIsBlocked() = 0;
 
-  // Signal to the underlying poller that a write operation would block. This
-  // is useful when using I/O operations outside of the scope of the ones
-  // provided by AMIO, for example, recvmsg() or sendmsg(), and EAGAIN or
-  // EWOULDBLOCK is returned.
+  // ETS event polling only.
   //
-  // It is not necessary to call this if the write event is enabled for the
-  // transport.
+  // Signal to the underlying poller that a write operation would block. This
+  // is needed in ETS mode when I/O operations outside of AMIO return EAGAIN or
+  // EWOULDBLOCK is returned. For example, sendmsg().
   virtual PassRef<IOError> WriteIsBlocked() = 0;
 
   // Internal function to cast transports to their underlying type.
@@ -156,7 +155,11 @@ class AMIO_LINK StatusListener : public ke::IRefcounted
 // Defined later.
 class Poller;
 
-// A poller is responsible for polling for events.
+// A poller is responsible for polling for events. Poller functions are
+// thread-safe with respect to other calls on Poller or Transports. They are
+// not atomic, meaning that operations can still race on different threads.
+// We simply guarantee that the operations will not corrupt internal
+// structures.
 class AMIO_LINK Poller : public ke::IRefcounted
 {
  public:
@@ -192,34 +195,24 @@ class AMIO_LINK Poller : public ke::IRefcounted
   // Because Read() and Write() automatically watch for events, it is not
   // necessary to pass any event flags here as long one of those will be
   // called.
-  //
-  // This function is thread-safe.
   virtual PassRef<IOError> Attach(
     Ref<Transport> transport,
     Ref<StatusListener> listener,
-    EventFlags eventMask
+    Events events,
+    EventMode mode
   ) = 0;
 
   // Detachs a transport from a pump. This happens automatically if the
   // transport is closed, a status error or hangup is generated, or a Read()
   // operation returns Ended. It is safe to deregister a transport multiple
   // times.
-  //
-  // This function is thread-safe, though if an event has already been deqeued
-  // it may still fire as the Detach completes.
   virtual void Detach(Ref<Transport> transport) = 0;
 
-  // Changes the polled events on a transport. This is only valid for level-
-  // triggered listeners. If the transport was not attached with Event_Sticky,
-  // this will fail. The new event mask must contain Event_Sticky.
-  //
-  // The resulting event set is undefined on error.
-  //
-  // NB: This is provided so embedders can simulate edge-triggering as needed;
-  // thus, there is no edge-triggered equivalent.
-  //
-  // This function is thread-safe.
-  virtual PassRef<IOError> ChangeStickyEvents(Ref<Transport> transport, EventFlags eventMask) = 0;
+  // Changes the polled events on a transport. Event modes cannot be changed
+  // without detaching and re-attaching the transport.
+  virtual PassRef<IOError> ChangeEvents(Ref<Transport> transport, Events events) = 0;
+  virtual PassRef<IOError> AddEvents(Ref<Transport> transport, Events events) = 0;
+  virtual PassRef<IOError> RemoveEvents(Ref<Transport> transport, Events events) = 0;
 
   // Enables thread-safety on the poller. By default, pollers and attached
   // transports can only be used from one thread at a time.
@@ -227,6 +220,12 @@ class AMIO_LINK Poller : public ke::IRefcounted
 
   // Shuts down the poller.
   virtual void Shutdown() = 0;
+
+  // Returns true if Poll() can be called from multiple threads without blocking.
+  virtual bool SupportsParallelPolling() = 0;
+
+  // Returns true if native edge-triggering support is available.
+  virtual bool SupportsEdgeTriggering() = 0;
 };
 
 #if defined(KE_BSD) || defined(KE_LINUX) || defined(KE_SOLARIS)
@@ -312,9 +311,10 @@ enum AMIO_LINK TransportFlags
   // counterparts.
   kTransportReading       = 0x00000004,
   kTransportWriting       = 0x00000008,
-  kTransportSticky        = 0x00000010,
+  kTransportLT            = 0x00000010,
+  kTransportET            = 0x00000020,
   kTransportEventMask     = kTransportReading | kTransportWriting,
-  kTransportClearMask     = kTransportEventMask|kTransportSticky,
+  kTransportClearMask     = kTransportEventMask | kTransportET | kTransportLT,
   kTransportUserFlagMask  = kTransportNoAutoClose|kTransportNoCloseOnExec,
 
   kTransportNoFlags       = 0x00000000,

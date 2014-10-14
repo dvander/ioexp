@@ -198,10 +198,12 @@ class ConnectOp
    public ke::RefcountedThreadsafe<ConnectOp>
 {
  public:
-  ConnectOp(Ref<PosixConnection> conn, Ref<Client::Listener> listener, EventFlags events)
+  ConnectOp(Ref<PosixConnection> conn, Ref<Client::Listener> listener,
+            Events events, EventMode mode)
    : conn_(conn),
      listener_(listener),
-     events_(events)
+     events_(events),
+     mode_(mode)
   {
   }
 
@@ -237,13 +239,7 @@ class ConnectOp
       return;
     }
 
-    TransportFlags flags = (events_ & Event_Sticky) ? kTransportSticky : kTransportNoFlags;
-    if (events_ & Event_Read)
-      flags |= kTransportReading;
-    if (events_ & Event_Write)
-      flags |= kTransportWriting;
-
-    if (Ref<IOError> error = conn_->poller()->change_events_unlocked(conn_, flags)) {
+    if (Ref<IOError> error = conn_->poller()->ChangeEvents(conn_, events_)) {
       reportError(error);
       return;
     }
@@ -267,7 +263,8 @@ class ConnectOp
  private:
   Ref<PosixConnection> conn_;
   Ref<Client::Listener> listener_;
-  EventFlags events_;
+  Events events_;
+  EventMode mode_;
 };
 
 // Note: the fd is automatically closed on error, since we assume the fd has
@@ -304,7 +301,8 @@ ConnectionForAddress(Ref<PosixConnection> *outp, Ref<Address> address, Protocol 
 PassRef<IOError>
 Client::Create(Result *result, Ref<Poller> poller,
                Ref<Address> address, Protocol protocol,
-               Ref<Client::Listener> listener, EventFlags events)
+               Ref<Client::Listener> listener,
+               Events events, EventMode mode)
 {
   *result = Result();
 
@@ -316,16 +314,14 @@ Client::Create(Result *result, Ref<Poller> poller,
 
   int rv = connect(conn->fd(), address->SockAddr(), address->SockAddrLen());
   if (rv == 0) {
-    if (Ref<IOError> error = poller->Attach(conn, listener, events))
+    if (Ref<IOError> error = poller->Attach(conn, listener, events, mode))
       return error;
     result->connection = conn;
     return nullptr;
   }
 
-  EventFlags sticky = (events & Event_Sticky) ? Event_Sticky : Events_None;
-
-  Ref<ConnectOp> op = new ConnectOp(conn, listener, events);
-  if (Ref<IOError> error = poller->Attach(conn, op, Event_Write | sticky))
+  Ref<ConnectOp> op = new ConnectOp(conn, listener, events, mode);
+  if (Ref<IOError> error = poller->Attach(conn, op, Events::Write, mode))
     return error;
 
   result->operation = op;
@@ -544,7 +540,7 @@ Server::Create(Ref<Server> *outp,
     return new PosixError();
 
   Ref<PosixServer> server = new PosixServer(transport, listener, local);
-  if (Ref<IOError> error = poller->Attach(transport, server, Event_Read|Event_Sticky))
+  if (Ref<IOError> error = poller->Attach(transport, server, Events::Read, EventMode::Level))
     return error;
 
   *outp = server;

@@ -48,7 +48,7 @@ class TestPipes
   }
 
  private:
-  bool setup(EventFlags extra = Events_None);
+  bool setup(EventMode mode);
   void reset();
 
   bool test_read_write();

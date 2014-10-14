@@ -20,12 +20,7 @@ ke::Ref<GenericError> amio::eUnsupportedAddressFamily = new GenericError("unsupp
 ke::Ref<GenericError> amio::eUnsupportedProtocol = new GenericError("unsupported protocol");
 ke::Ref<GenericError> amio::ePollerShutdown = new GenericError("poller has been shutdown");
 ke::Ref<GenericError> amio::eTransportNotAttached = new GenericError("transport is not attached");
-
-#if !defined(KE_CXX11)
-const ErrorType ErrorType::System = {0};
-const ErrorType ErrorType::Library = {1};
-const ErrorType ErrorType::Exception = {2};
-#endif
+ke::Ref<GenericError> amio::eEdgeTriggeringUnsupported = new GenericError("native edge-triggering is not supported");
 
 GenericError::GenericError(const char *fmt, ...)
 {

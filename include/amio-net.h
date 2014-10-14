@@ -378,14 +378,16 @@ class Client
   //  protocol:  The protocol to use for the socket.
   //  listener:  Listener to receive event callbacks.
   //  events:    The initial events to listen for once the client has connected.
-  //             On Windows, this is ignored.
+  //             Ignored for Windows IOCP.
+  //  mode:      The event mode to use. Ignored for Windows IOCP.
   static PassRef<IOError> Create(
     Result *result,
     Ref<Poller> poller,
     Ref<Address> address,
     Protocol protocol,
     Ref<Client::Listener> listener,
-    EventFlags events = Events_None
+    Events events = Events::None,
+    EventMode mode = EventMode::Default
   );
 };
 

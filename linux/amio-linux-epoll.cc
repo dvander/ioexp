@@ -129,7 +129,7 @@ EpollImpl::epoll_ctl(int cmd, size_t slot, int fd, TransportFlags flags)
 {
   epoll_event pe;
   pe.data.ptr = (void *)slot;
-  pe.events = (flags & kTransportSticky) ? 0 : EPOLLET;
+  pe.events = (flags & kTransportET) ? EPOLLET : 0;
   if (can_use_rdhup_)
     pe.events |= EPOLLRDHUP;
   if (flags & kTransportReading)
@@ -165,7 +165,7 @@ EpollImpl::handleEvent(size_t slot)
   // If we are listening for sticky events, but not this event, bail out. We
   // only check this for sticky events, since edge-triggered transports cannot
   // be changed.
-  if ((transport->flags() & (outFlag|kTransportSticky)) == kTransportSticky)
+  if ((transport->flags() & (outFlag|kTransportLT)) == kTransportLT)
     return;
 
   // We must hold the listener in a ref, since if the transport is detached

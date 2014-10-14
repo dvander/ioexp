@@ -117,7 +117,7 @@ inline void
 SelectImpl::handleEvent(fd_set *set, int fd)
 {
   Ref<PosixTransport> transport = fds_[fd].transport;
-  if (transport->flags() & kTransportSticky) {
+  if (transport->flags() & kTransportLT) {
     // Ignore - the event's been changed.
     if (!(transport->flags() & outFlag))
       return;

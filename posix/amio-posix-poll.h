@@ -36,6 +36,9 @@ class PollImpl : public PosixPoller
   PassRef<IOError> Poll(int timeoutMs) override;
   void Interrupt() override;
   void Shutdown() override;
+  bool SupportsEdgeTriggering() override {
+    return false;
+  }
 
   PassRef<IOError> attach_locked(
     PosixTransport *transport,

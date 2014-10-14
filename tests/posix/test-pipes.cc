@@ -21,7 +21,7 @@ TestPipes::TestPipes(CreatePoller_t ctor, const char *name)
 }
 
 bool
-TestPipes::setup(EventFlags extra)
+TestPipes::setup(EventMode mode)
 {
   reset();
 
@@ -29,10 +29,10 @@ TestPipes::setup(EventFlags extra)
   if (!check_error(error, "create pipes"))
     return false;
 
-  error = poller_->Attach(reader_, this, Event_Read|extra);
+  error = poller_->Attach(reader_, this, Events::Read, mode);
   if (!check_error(error, "attach read pipe"))
     return false;
-  error = poller_->Attach(writer_, this, Event_Write|extra);
+  error = poller_->Attach(writer_, this, Events::Write, mode);
   if (!check_error(error, "attach write pipe"))
     return false;
 
@@ -104,7 +104,7 @@ bool
 TestPipes::test_sticky()
 {
   AutoTestContext test("sticky events");
-  if (!setup(Event_Sticky))
+  if (!setup(EventMode::Level))
     return false;
 
   // We should get a write event.
@@ -132,12 +132,7 @@ TestPipes::test_sticky()
   if (!check(got_read_, "should have gotten read"))
     return false;
 
-  Ref<IOError> error = poller_->ChangeStickyEvents(reader_, Event_Read);
-  if (!check(error != nullptr, "cannot change level-triggered to edge-triggered"))
-    return false;
-
-  poller_->ChangeStickyEvents(reader_, Event_Sticky);
-  if (!check_error(poller_->ChangeStickyEvents(reader_, Event_Sticky), "change events"))
+  if (!check_error(poller_->ChangeEvents(reader_, Events::Write), "change events"))
     return false;
 
   got_read_ = false;
@@ -153,7 +148,7 @@ bool
 TestPipes::test_edge_triggering()
 {
   AutoTestContext test("edge-triggering");
-  if (!setup())
+  if (!setup(EventMode::ETS))
     return false;
 
   if (!check_error(poller_->Poll(), "initial poll"))
@@ -170,13 +165,6 @@ TestPipes::test_edge_triggering()
   if (!check(!got_read_, "should not have gotten a read"))
     return false;
 
-  Ref<IOError> error = poller_->ChangeStickyEvents(reader_, Event_Read|Event_Sticky);
-  if (!check(error != nullptr, "cannot change edge-triggered to level-triggered"))
-    return false;
-  error = poller_->ChangeStickyEvents(reader_, Event_Read);
-  if (!check(error != nullptr, "cannot change edge-triggered events"))
-    return false;
-
   return true;
 }
 
@@ -184,7 +172,7 @@ bool
 TestPipes::test_read_write()
 {
   AutoTestContext test("reading and writing");
-  if (!setup())
+  if (!setup(EventMode::ETS))
     return false;
 
   if (!check_error(poller_->Poll(), "initial poll"))
@@ -241,7 +229,7 @@ bool
 TestPipes::test_poll_write_close()
 {
   AutoTestContext test("polling after a writer is closed");
-  if (!setup())
+  if (!setup(EventMode::ETS))
     return false;
 
   writer_->Close();
@@ -269,7 +257,7 @@ bool
 TestPipes::test_poll_read_close()
 {
   AutoTestContext test("polling after a reader is closed");
-  if (!setup())
+  if (!setup(EventMode::ETS))
     return false;
 
   reader_->Close();

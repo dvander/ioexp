@@ -58,9 +58,9 @@ class TestThread
   void Run() override {
     if (!check_error(TransportFactory::CreatePipe(&reader, &writer), "create pipes"))
       return;
-    if (!check_error(poller_->Attach(reader, this, Events_None), "attach read pipe"))
+    if (!check_error(poller_->Attach(reader, this, Events::None, EventMode::ETS), "attach read pipe"))
       return;
-    if (!check_error(poller_->Attach(writer, this, Event_Write), "attach write pipe"))
+    if (!check_error(poller_->Attach(writer, this, Events::Write, EventMode::ETS), "attach write pipe"))
       return;
 
     IOResult r;

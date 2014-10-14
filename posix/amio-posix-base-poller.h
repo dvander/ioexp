@@ -35,21 +35,24 @@ class PosixPoller
   void Release() override {
     RefcountedThreadsafe<PosixPoller>::Release();
   }
+  virtual bool SupportsParallelPolling() override {
+    return false;
+  }
 
   // Helper functions. These perform validation and route on to inner
   // functions.
   PassRef<IOError> Attach(
     Ref<Transport> baseTransport,
     Ref<StatusListener> listener,
-    EventFlags eventMask
+    Events events,
+    EventMode mode
   ) override;
 
   void Detach(Ref<Transport> baseTransport) override;
 
-  PassRef<IOError> ChangeStickyEvents(
-    Ref<Transport> baseTransport,
-    EventFlags eventMask
-  ) override;
+  PassRef<IOError> ChangeEvents(Ref<Transport> transport, Events events) override;
+  PassRef<IOError> AddEvents(Ref<Transport> transport, Events events) override;
+  PassRef<IOError> RemoveEvents(Ref<Transport> transport, Events events) override;
 
   // These are called after validation.
   virtual PassRef<IOError> attach_locked(
@@ -63,6 +66,7 @@ class PosixPoller
   void detach_unlocked(PosixTransport *transport);
   PassRef<IOError> change_events_unlocked(PosixTransport *transport, TransportFlags flags);
   PassRef<IOError> add_events_unlocked(PosixTransport *transport, TransportFlags flags);
+  PassRef<IOError> rm_events_unlocked(PosixTransport *transport, TransportFlags flags);
 
   void reportHup_locked(Ref<PosixTransport> transport);
   void reportError_locked(Ref<PosixTransport> transport);

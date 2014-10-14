@@ -43,6 +43,7 @@ extern ke::Ref<GenericError> eTransportClosed;
 extern ke::Ref<GenericError> eUnsupportedAddressFamily;
 extern ke::Ref<GenericError> eUnsupportedProtocol;
 extern ke::Ref<GenericError> ePollerShutdown;
+extern ke::Ref<GenericError> eEdgeTriggeringUnsupported;
 
 } // namespace amio
 

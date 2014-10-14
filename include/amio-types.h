@@ -25,58 +25,73 @@ namespace amio {
 using namespace ke;
 
 // Types of errors that can occur.
-#if defined(KE_CXX11)
 enum class ErrorType
 {
   System,       // System error (code included).
   Library,      // Library (AMIO) error.
   Exception     // Generic exception.
 };
-#else
-struct AMIO_LINK ErrorType
+
+// Flags for events.
+enum class Events : uint32_t
 {
-  int type;
-  static const ErrorType System;
-  static const ErrorType Library;
-  static const ErrorType Exception;
+  Read   =  0x4,
+  Write  =  0x8,
+  None   =  0x0
 };
-#endif
+KE_DEFINE_ENUM_OPERATORS(Events)
 
-enum EventFlags : uint32_t
+// Event delivery modes.
+enum class EventMode : uint32_t
 {
-  Event_Read   =  0x4,
-  Event_Write  =  0x8,
+  // In level-triggered mode, events will be delivered as long as they are
+  // true. For example, as long as a write to a socket would not block, the
+  // event will be delivered. This is supported on all pollers, and so it is
+  // the default mode.
+  Level  = 0x10,
 
-  // Normally, events are cleared after they are received, and the user must
-  // deplete the I/O buffer to signal that a new event is needed. This is called
-  // "edge-triggered" behavior. While edge-triggering is very efficient, huge
-  // volumes of I/O depletion can starve the I/O thread. One way around this is
-  // to buffer I/O events in a separate queue, and incrementally process that
-  // queue in your Poll() loop.
+  // In edge-triggered mode, events will be delivered only once their status
+  // changes from not-true to true. For example, when a write to a socket
+  // would not block, an event will be delivered. The event will not be
+  // delivered again until the user encounters a situation which would cause
+  // the write to block (for example, sending enough data to trigger EAGAIN).
   //
-  // "Level-triggered" polling makes this easier. In level-trigger mode, events
-  // are not cleared, and will signal for as long as their condition is true.
-  // AMIO exposes level-triggering as the Event_Sticky flag.
+  // Edge triggering is more efficient than level-triggering since unnecessary
+  // events not are fired. However, with huge volumes of I/O, naive use can
+  // lead to starvation. If an event tries to deplete all available non-blocking
+  // space, it may never yield to the main thread. It is usually a good idea
+  // to perform some amount of event buffering with edge-triggered events.
   //
-  // select(), WSASelect(), poll(), and WSAPoll() are stateless; AMIO emulates
-  // both behavior modes when using them as pollers.
-  //
-  // epoll() and kqueue() have native support for both edge- and level-
-  // triggered behavior*.
-  //
-  // On Solaris, completion ports are (effectively) stateless. AMIO emulates
-  // both behaviors (level-triggering is more expensive as the port must be
-  // re-armed more often). /dev/poll is level-triggered; edge-triggering is
-  // emulated.
-  //
-  // *Note: There is one flag to control behavior for both reads and writes.
-  // Although most pollers can distinguish between the modes on one transport,
-  // epoll() cannot, so for simplicity we do not provide an API for it.
-  Event_Sticky =  0x10,
+  // Edge triggering is not supported with select(), poll(), or Solaris devpoll
+  // backends. Use Poller::SupportsEdgeTriggering() to test for this. Adding
+  // an edge-triggered event to an incompatible poller will result in an error.
+  Edge   = 0x20,
 
-  Events_None  =  0x0
+  // Some backends (noted above) do not support edge-triggering. AMIO's ETS
+  // mode can emulate edge-triggering somewhat efficiently on these pollers,
+  // so that developers can use edge-triggering on any platform, whether or
+  // not native support is available. However, code which uses this mode must
+  // obey an extra API contract:
+  //
+  //  Anytime a system call returns EAGAIN or EWOULDBLOCK, indicating that a
+  //  read or write would block, Transport::ReadIsBlocked() or Transport::
+  //  WriteIsBlocked must be called.
+  //
+  // This only applies to I/O operations that occur outside of Transport, such
+  // as using recvmsg() on a transport's file descriptor. It is not needed for
+  // normal calls to Transport::Read or Transport::Write. Failure to call
+  // Read/WriteIsBlocked() otherwise will cause future events to not be
+  // delivered.
+  //
+  // Note that ETS mode has the same pitfalls as Edge mode. If native edge-
+  // triggering is available, then Read/WriteIsBlocked() methods are identical
+  // to Poller::AddEvents() with Read or Write. There is a fast shortcut to
+  // make these functions close to a no-op.
+  ETS   = 0x40,
+
+  // The default mode is level-triggered.
+  Default = 0
 };
-KE_DEFINE_ENUM_OPERATORS(EventFlags)
 
 // Represents an I/O error.
 class IOError : public ke::RefcountedThreadsafe<IOError>

@@ -114,8 +114,12 @@ TestServerClient::Run()
 
   Ref<ClientHelper> cli_helper = new ClientHelper();
   Client::Result client;
-  if (!check_error(Client::Create(&client, poller_, address, Protocol::TCP, cli_helper),
-                   "create client"))
+  if (!check_error(
+         Client::Create(
+           &client, poller_,
+           address, Protocol::TCP,
+           cli_helper, Events::None, EventMode::ETS),
+      "create client"))
   {
     return false;
   }
