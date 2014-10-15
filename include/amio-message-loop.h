@@ -15,7 +15,7 @@
 
 namespace amio {
 
-// Implement this to post tasks to the main thread.
+// Implement this to post tasks to MessageLoops.
 class Task
 {
  public:
@@ -43,6 +43,10 @@ class MessageLoop
   // Create a message loop with a specific poller.
   static MessageLoop *Create(Ref<Poller> poller);
 
+  // Returns the most recently MessageLoop that called SetCurrent() on the
+  // current thread.
+  static MessageLoop *Current();
+
   // Post a message to the message loop. This can be done from any thread.
   // If the task cannot be added, the task will be deleted immediately.
   virtual PassRef<IOError> PostTask(Task *task) = 0;
@@ -52,6 +56,9 @@ class MessageLoop
 
   // Returns whether the message loop received a PostQuit().
   virtual bool ShouldQuit() = 0;
+
+  // Sets the message loop as the active message loop for the thread.
+  virtual void SetCurrent() = 0;
 
   // Poll for messages. This blocks the calling thread until at least one task
   // or I/O event has been processed.
