@@ -12,6 +12,7 @@
 
 #include "include/amio.h"
 #include "include/amio-posix.h"
+#include "shared/amio-shared-pollbuf.h"
 #include "posix/amio-posix-base-poller.h"
 #include <sys/types.h>
 #include <sys/event.h>
@@ -25,10 +26,10 @@ using namespace ke;
 class KqueueImpl : public PosixPoller
 {
  public:
-  KqueueImpl(size_t maxEvents = 0);
+  KqueueImpl();
   ~KqueueImpl();
 
-  PassRef<IOError> Initialize();
+  PassRef<IOError> Initialize(size_t absoluteMaxEvents);
   PassRef<IOError> Poll(int timeoutMs) override;
   void Interrupt() override;
   void Shutdown() override;
@@ -59,9 +60,7 @@ class KqueueImpl : public PosixPoller
   ke::Vector<PollData> listeners_;
   ke::Vector<size_t> free_slots_;
 
-  size_t max_events_;
-  size_t absolute_max_events_;
-  ke::AutoArray<struct kevent> event_buffer_;
+  PollBuffer<struct kevent> event_buffer_;
 };
 
 } // namespace amio

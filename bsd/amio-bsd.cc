@@ -14,10 +14,10 @@ using namespace amio;
 using namespace ke;
 
 PassRef<IOError>
-PollerFactory::CreateKqueueImpl(Ref<Poller> *outp, size_t maxEventsPerPoll)
+PollerFactory::CreateKqueueImpl(Ref<Poller> *outp, size_t absoluteMaxEvents)
 {
-  Ref<KqueueImpl> poller(new KqueueImpl(maxEventsPerPoll));
-  Ref<IOError> error = poller->Initialize();
+  Ref<KqueueImpl> poller(new KqueueImpl());
+  Ref<IOError> error = poller->Initialize(absoluteMaxEvents);
   if (error)
     return error;
   *outp = poller;

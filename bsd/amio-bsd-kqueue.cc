@@ -25,9 +25,7 @@ typedef void* kev_userdata_t;
 
 KqueueImpl::KqueueImpl()
  : kq_(-1),
-   generation_(0),
-   max_events_(0),
-   absolute_max_events_(maxEvents)
+   generation_(0)
 {
 }
 
@@ -53,18 +51,12 @@ KqueueImpl::Shutdown()
 }
 
 PassRef<IOError>
-KqueueImpl::Initialize()
+KqueueImpl::Initialize(size_t absoluteMaxEvents)
 {
   if ((kq_ = kqueue()) == -1)
     return new PosixError();
 
-  if (absolute_max_events_)
-    max_events_ = absolute_max_events_;
-  else
-    max_events_ = 32;
-
-  event_buffer_ = new struct kevent[max_events_];
-  if (!event_buffer_)
+  if (!event_buffer_.init(32, absoluteMaxEvents))
     return eOutOfMemory;
 
   return nullptr;
@@ -162,7 +154,7 @@ KqueueImpl::Poll(int timeoutMs)
     timeoutp = &timeout;
   }
 
-  int nevents = kevent(kq_, nullptr, 0, event_buffer_, max_events_, timeoutp);
+  int nevents = kevent(kq_, nullptr, 0, event_buffer_.get(), event_buffer_.length(), timeoutp);
   if (nevents == -1)
     return new PosixError();
 
@@ -218,16 +210,8 @@ KqueueImpl::Poll(int timeoutMs)
   }
 
   // If we filled the event buffer, resize it for next time.
-  if (!absolute_max_events_ && size_t(nevents) == max_events_ && max_events_ < (INT_MAX / 2)) {
-    AutoMaybeUnlock unlock(lock_);
-
-    size_t new_size = max_events_ * 2;
-    struct kevent *new_buffer = new struct kevent[new_size];
-    if (new_buffer) {
-      max_events_ = new_size;
-      event_buffer_ = new_buffer;
-    }
-  }
+  if (size_t(nevents) == event_buffer_.length())
+    event_buffer_.maybeResize();
 
   return nullptr;
 }
