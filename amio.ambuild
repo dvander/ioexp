@@ -29,6 +29,7 @@ def Configure(binary):
     'shared/amio-errors.cc',
     'shared/amio-string.cc',
     'shared/amio-shared-net.cc',
+    'shared/amio-task-queue.cc',
   ]
 
   if builder.target_platform != 'windows':
@@ -42,6 +43,10 @@ def Configure(binary):
       'posix/amio-posix-net.cc', 
     ]
     binary.compiler.cflags += ['-fPIC']
+    if builder.target_platform != 'mac':
+      binary.sources += [
+        'posix/amio-posix-time.cc',
+      ]
 
   if builder.target_platform == 'linux':
     binary.sources += [

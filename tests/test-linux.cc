@@ -10,7 +10,7 @@
 #include <amio.h>
 #include "posix/test-pipes.h"
 #include "posix/test-threading.h"
-#include "common/server-client.h"
+#include "common/test-server-client.h"
 
 using namespace ke;
 using namespace amio;

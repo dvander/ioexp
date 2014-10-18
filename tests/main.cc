@@ -13,6 +13,7 @@
 #include <string.h>
 #include <amio.h>
 #include <amio-net.h>
+#include <amio-time.h>
 #include "testing.h"
 
 using namespace ke;
@@ -32,7 +33,14 @@ int main(int argc, char **argv)
 #endif
 
   SetupTests();
-  SetupNetworkTests();
+
+  int64_t res = HighResolutionTimer::Resolution();
+  if (res < kNanosecondsPerMicrosecond)
+    printf("Timer resolution: " KE_I64_FMT "ns\n", res);
+  else if (res < kNanosecondsPerMillisecond)
+    printf("Timer resolution: " KE_I64_FMT "us\n", res / kNanosecondsPerMicrosecond);
+  else
+    printf("Timer resolution: " KE_I64_FMT "ms\n", res / kNanosecondsPerMillisecond);
 
   bool ok = true;
   for (size_t i = 0; i < Tests.length(); i++) {

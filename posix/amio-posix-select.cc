@@ -160,7 +160,7 @@ SelectImpl::Poll(int timeoutMs)
   }
 
   fd_set read_fds, write_fds;
-  size_t fd_watermark;
+  int fd_watermark;
 
   // Copy the descriptor maps. Do this in a lock, so we don't have to hold the
   // transport lock while polling.

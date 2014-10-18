@@ -10,7 +10,7 @@
 #include <amio.h>
 #include <amio-net.h>
 #include "../testing.h"
-#include "server-client.h"
+#include "test-server-client.h"
 
 using namespace ke;
 using namespace amio;

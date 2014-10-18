@@ -17,9 +17,11 @@ using namespace amio;
 class NetworkTests : public Test
 {
  public:
-  NetworkTests(const char *name)
-   : Test(name)
-  {}
+  NetworkTests()
+   : Test("basic-net")
+  {
+  }
+
   bool Run() override {
     if (!resolve_ipv4())
       return false;
@@ -128,8 +130,10 @@ class NetworkTests : public Test
   }
 };
 
-void
-ke::SetupNetworkTests()
+class SetupNetworkTests
 {
-  Tests.append(new NetworkTests("basic-net"));
-}
+ public:
+  SetupNetworkTests() {
+    Tests.append(new NetworkTests());
+  }
+} sSetupNetworkTests;

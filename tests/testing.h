@@ -140,7 +140,6 @@ check_error(Ref<IOError> error, const char *fmt, ...)
 
 // Must be implemented on each platform.
 void SetupTests();
-void SetupNetworkTests();
 
 typedef PassRef<IOError> (*CreatePoller_t)(Ref<Poller> *outp);
 
