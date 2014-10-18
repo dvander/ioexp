@@ -8,7 +8,7 @@
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
 #include <amio.h>
-#include "common/server-client.h"
+#include "common/test-server-client.h"
 
 using namespace ke;
 using namespace amio;

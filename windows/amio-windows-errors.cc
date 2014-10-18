@@ -15,7 +15,6 @@ using namespace amio;
 using namespace ke;
 
 Ref<GenericError> amio::eContextAlreadyAssociated = new GenericError("context is already in-use");
-Ref<GenericError> amio::eTransportNotAttached = new GenericError("transport is not associated with a poller");
 Ref<GenericError> amio::eLengthOutOfRange = new GenericError("number of bytes is too large");
 Ref<GenericError> amio::eInvalidContext = new GenericError("invalid context");
 Ref<GenericError> amio::eIncompatibleTransport = new GenericError("transport is not a WinTransport");

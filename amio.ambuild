@@ -66,6 +66,7 @@ def Configure(binary):
       'windows/amio-windows-iocp.cc',
       'windows/amio-windows-net.cc',
       'windows/amio-windows-socket.cc',
+      'windows/amio-windows-time.cc',
       'windows/amio-windows-transport.cc',
       'windows/amio-windows-util.cc',
     ]

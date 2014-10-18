@@ -18,8 +18,6 @@
 using namespace amio;
 using namespace ke;
 
-Ref<GenericError> eTransportNotAttached = new GenericError("transport is not attached");
-
 WinTransport::WinTransport(TransportFlags flags)
  : flags_(flags)
 {

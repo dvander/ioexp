@@ -69,6 +69,7 @@ class TestTasks
     sTaskMutex = new Mutex();
     gotQuit = false;
     hasTasks = false;
+    notifications = 0;
   }
 
   KE_IMPL_REFCOUNTING(TestTasks);
@@ -98,6 +99,7 @@ class TestTasks
     if (!check(!queue->ProcessTasks(nullptr, 0), "should have no tasks"))
       return false;
 
+    notifications = 0;
     queue->PostTask(new BasicTask());
     queue->PostTask(new BasicTask());
     queue->PostTask(new BasicTask());

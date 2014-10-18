@@ -511,7 +511,8 @@ Client::Create(Result *result,
                Ref<Address> address,
                Protocol protocol,
                Ref<Client::Listener> listener,
-               EventFlags ignoreFlags)
+               Events ignoreEvents,
+               EventMode ignoreMode)
 {
   *result = Result();
 
