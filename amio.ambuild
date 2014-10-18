@@ -47,6 +47,10 @@ def Configure(binary):
       binary.sources += [
         'posix/amio-posix-time.cc',
       ]
+    else:
+      binary.sources += [
+        'bsd/amio-mach-time.cc',
+      ]
 
   if builder.target_platform == 'linux':
     binary.sources += [

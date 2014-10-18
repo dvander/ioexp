@@ -41,6 +41,7 @@ int main(int argc, char **argv)
     printf("Timer resolution: " KE_I64_FMT "us\n", res / kNanosecondsPerMicrosecond);
   else
     printf("Timer resolution: " KE_I64_FMT "ms\n", res / kNanosecondsPerMillisecond);
+  printf("Time: " KE_I64_FMT "\n", HighResolutionTimer::Counter());
 
   bool ok = true;
   for (size_t i = 0; i < Tests.length(); i++) {
