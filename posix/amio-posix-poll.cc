@@ -49,10 +49,8 @@ PollImpl::Shutdown()
     if (fd == -1)
       continue;
 
-    if (fds_[fd].transport) {
-      fds_[fd].transport->detach();
-      fds_[fd].transport = nullptr;
-    }
+    if (fds_[fd].transport)
+      detach_for_shutdown_locked(fds_[fd].transport);
   }
 }
 
@@ -101,7 +99,7 @@ PollImpl::attach_locked(PosixTransport *transport, StatusListener *listener, Tra
   return nullptr;
 }
 
-void
+PassRef<StatusListener>
 PollImpl::detach_locked(PosixTransport *transport)
 {
   int fd = transport->fd();
@@ -111,14 +109,12 @@ PollImpl::detach_locked(PosixTransport *transport)
   size_t slot = transport->getUserData();
   assert(poll_events_[slot].fd == fd);
 
-  // Note: just for safety, we call this after we're done with the transport,
-  // in case the assignment below drops the last ref.
-  transport->detach();
-
   poll_events_[slot].fd = -1;
   fds_[fd].transport = nullptr;
   fds_[fd].modified = generation_;
   free_slots_.append(slot);
+
+  return transport->detach();
 }
 
 PassRef<IOError>
@@ -164,9 +160,9 @@ PollImpl::handleEvent(size_t event_idx, int fd)
 
   AutoMaybeUnlock unlock(lock_);
   if (outFlag == kTransportReading)
-    listener->OnReadReady(transport);
+    listener->OnReadReady();
   else if (outFlag == kTransportWriting)
-    listener->OnWriteReady(transport);
+    listener->OnWriteReady();
 }
 
 PassRef<IOError>
@@ -251,11 +247,4 @@ PollImpl::Poll(int timeoutMs)
   }
 
   return nullptr;
-}
-
-void
-PollImpl::Interrupt()
-{
-  // NYI
-  abort();
 }

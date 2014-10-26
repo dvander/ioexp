@@ -232,10 +232,3 @@ PortImpl::Poll(int timeoutMs)
 
   return nullptr;
 }
-
-void
-PortImpl::Interrupt()
-{
-  // Not yet implemented.
-  abort();
-}

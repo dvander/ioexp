@@ -29,7 +29,6 @@ class SelectImpl : public PosixPoller
   ~SelectImpl();
 
   PassRef<IOError> Poll(int timeoutMs) override;
-  void Interrupt() override;
   void Shutdown() override;
   bool SupportsEdgeTriggering() override {
     return false;
@@ -39,7 +38,7 @@ class SelectImpl : public PosixPoller
     PosixTransport *transport,
     StatusListener *listener,
     TransportFlags flags) override;
-  void detach_locked(PosixTransport *transport) override;
+  PassRef<StatusListener> detach_locked(PosixTransport *transport) override;
   PassRef<IOError> change_events_locked(PosixTransport *transport, TransportFlags flags) override;
 
  private:

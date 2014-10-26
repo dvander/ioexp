@@ -37,7 +37,6 @@ class PortImpl : public PosixPoller
 
   PassRef<IOError> Initialize(size_t maxEventsPerPoll = 0);
   PassRef<IOError> Poll(int timeoutMs) override;
-  void Interrupt() override;
   void Shutdown() override;
   bool SupportsEdgeTriggering() override {
     return false;

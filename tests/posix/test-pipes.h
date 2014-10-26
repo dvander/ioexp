@@ -30,19 +30,13 @@ class TestPipes
     Test::Release();
   }
 
-  void OnReadReady(Ref<Transport> transport) override {
+  void OnReadReady() override {
     got_read_ = true;
-    assert(transport == reader_);
   }
-  void OnWriteReady(Ref<Transport> transport) override {
+  void OnWriteReady() override {
     got_write_ = true;
-    assert(transport == writer_);
   }
-  void OnHangup(Ref<Transport> transport) override {
-    got_hangup_ = true;
-    got_error_ = nullptr;
-  }
-  void OnError(Ref<Transport> transport, Ref<IOError> error) override {
+  void OnHangup(Ref<IOError> error) override {
     got_hangup_ = true;
     got_error_ = error;
   }

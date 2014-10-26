@@ -42,7 +42,7 @@ PollerFactory::CreateCompletionPort(Ref<Poller> *outp, size_t maxEventsPerPoll)
 }
 
 PassRef<IOError>
-PollerFactory::CreatePoller(Ref<Poller> *outp)
+PollerFactory::Create(Ref<Poller> *outp)
 {
   return PollerFactory::CreateSelectImpl(outp);
 }

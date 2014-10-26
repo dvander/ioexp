@@ -36,14 +36,6 @@ enum class RequestType
   Cancelled
 };
 
-// User data that is reference counted.
-class IUserData : public ke::IRefcounted
-{
- public:
-  virtual ~IUserData()
-  {}
-};
-
 // IO operations must be associated with a context object. A context can be
 // associated with at most one operation at a time. Internally, this wraps
 // an OVERLAPPED structure from WINAPI.

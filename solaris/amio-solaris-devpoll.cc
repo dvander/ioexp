@@ -229,10 +229,3 @@ DevPollImpl::Poll(int timeoutMs)
 
   return nullptr;
 }
-
-void
-DevPollImpl::Interrupt()
-{
-  // Not yet implemented.
-  abort();
-}

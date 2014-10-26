@@ -14,8 +14,10 @@
 
 namespace amio {
 
-// Forward declarations for internal types.
+// Forward declarations.
+class Poller;
 class PosixTransport;
+class StatusListener;
 
 // The result of an IO operation.
 struct AMIO_LINK IOResult
@@ -116,6 +118,12 @@ class AMIO_LINK Transport : public ke::IRefcounted
   // EWOULDBLOCK is returned. For example, sendmsg().
   virtual PassRef<IOError> WriteIsBlocked() = 0;
 
+  // Return the listener associated with this transport.
+  virtual PassRef<StatusListener> Listener() = 0;
+
+  // Returns true if the listener is in proxy mode, false otherwise.
+  virtual bool IsListenerProxying() = 0;
+
   // Internal function to cast transports to their underlying type.
   virtual PosixTransport *toPosixTransport() = 0;
 };
@@ -129,45 +137,98 @@ class AMIO_LINK StatusListener : public ke::IRefcounted
 
   // Called when data is available for non-blocking reading. Always invoked
   // on the polling thread.
-  virtual void OnReadReady(ke::Ref<Transport> transport)
+  virtual void OnReadReady()
   {}
 
   // Called when data is available for non-blocking sending. Always invoked
   // on the polling thread.
-  virtual void OnWriteReady(ke::Ref<Transport> transport)
+  virtual void OnWriteReady()
   {}
 
-  // Called when a connection has been closed by a peer. This is the same as
-  // Read() returning a Closed status, however, some message pumps can detect
-  // this as its own event and return it earlier.
+  // Called when a connection has been closed. If |error| is null, this is the
+  // same as Read() returning a Closed status, however, some message pumps can
+  // detect this as its own event and return it earlier.
   //
-  // If this event has been received, the transport is automatically
-  // deregistered beforehand.
-  virtual void OnHangup(ke::Ref<Transport> transport)
+  // If |error| is non-null, the connection did not close gracefully.
+  //
+  // Once OnHangup() is called, the transport has already been detached from
+  // its corresponding poller.
+  virtual void OnHangup(ke::Ref<IOError> error)
   {}
 
-  // Called when an error state is received.
-  //
-  // If this event has been received, the transport is automatically
-  // deregistered beforehand.
-  virtual void OnError(ke::Ref<Transport> transport, ke::Ref<IOError> error)
+  // This is only called in "proxy" mode, when the transport is detached, and
+  // only when the detach is happening outside of a normal event. That is,
+  // OnHangup() may be called instead of OnProxyDetach().
+  virtual void OnProxyDetach()
+  {}
+
+  // This is only called if the listener is in "proxy" mode.
+  virtual void OnChangeProxy(ke::Ref<StatusListener> new_listener)
+  {}
+
+  // This is only called if the listener is in "proxy" mode, and the set of
+  // listened events changes.
+  virtual void OnChangeEvents(Events new_events)
   {}
 };
 
-// Defined later.
-class Poller;
+// An IODispatcher is responsible for dispatching IO events. This abstraction
+// is provided separately from pollers for a very specific reason. While
+// Pollers are ultimately the only tool for querying IO events, it is useful
+// to build tools on top of pollers for dispatching events at different
+// priority levels. Rather than hardcode this functionality directly into
+// pollers, we allow building new dispatch mechanisms on top of pollers.
+//
+// Without this abstraction, it would be more difficult to layer helper
+// functionality such as what amio::net provides.
+//
+// Dispatchers may not be thread-safe; check its derived classes to make sure.
+class AMIO_LINK IODispatcher : public ke::IRefcounted
+{
+ public:
+  virtual ~IODispatcher()
+  {}
+
+  // Attachs a transport. A transport can be registered to at most one
+  // dispatcher at a time.
+  //
+  // The events bitmask specifies the initial events the poller will listen for
+  // on this transport. It can be None. The mode specifies whether events
+  // will be level- or edge-triggered.
+  virtual PassRef<IOError> Attach(
+    Ref<Transport> transport,
+    Ref<StatusListener> listener,
+    Events events,
+    EventMode mode
+  ) = 0;
+
+  // Detachs a transport from the dispatcher. This happens automatically if the
+  // transport is closed, a status error or hangup is generated, or a Read()
+  // operation returns Ended. It is safe to deregister a transport multiple
+  // times.
+  //
+  // Detaching a transport from a different dispatcher than it was attached to
+  // is illegal and may crash.
+  virtual void Detach(Ref<Transport> transport) = 0;
+
+  // Changes the polled events on a transport. Event modes cannot be changed
+  // without detaching and re-attaching the transport.
+  virtual PassRef<IOError> ChangeEvents(Ref<Transport> transport, Events events) = 0;
+  virtual PassRef<IOError> AddEvents(Ref<Transport> transport, Events events) = 0;
+  virtual PassRef<IOError> RemoveEvents(Ref<Transport> transport, Events events) = 0;
+
+  // Shuts down the dispatcher such that it will stop dispatching events.
+  virtual void Shutdown() = 0;
+};
 
 // A poller is responsible for polling for events. Poller functions are
 // thread-safe with respect to other calls on Poller or Transports. They are
 // not atomic, meaning that operations can still race on different threads.
 // We simply guarantee that the operations will not corrupt internal
 // structures.
-class AMIO_LINK Poller : public ke::IRefcounted
+class AMIO_LINK Poller : public IODispatcher
 {
  public:
-  virtual ~Poller()
-  {}
-
   // The type of a listener, for notifications.
   typedef StatusListener Listener;
 
@@ -183,45 +244,9 @@ class AMIO_LINK Poller : public ke::IRefcounted
   // Poll().
   virtual PassRef<IOError> Poll(int timeoutMs = kNoTimeout) = 0;
 
-  // Interrupt a poll operation. The active poll operation will return an error.
-  virtual void Interrupt() = 0;
-
-  // Attachs a transport with the pump. A transport can be registered to at
-  // most one pump at any given time. Only transports created via
-  // TransportFactory can be registered.
-  //
-  // The eventMask specifies the initial events the poller will listen for
-  // on this transport. Since all pollers simulate edge-triggering, it is the
-  // caller's responsibility to request new events via Read() or Write().
-  //
-  // Because Read() and Write() automatically watch for events, it is not
-  // necessary to pass any event flags here as long one of those will be
-  // called.
-  virtual PassRef<IOError> Attach(
-    Ref<Transport> transport,
-    Ref<StatusListener> listener,
-    Events events,
-    EventMode mode
-  ) = 0;
-
-  // Detachs a transport from a pump. This happens automatically if the
-  // transport is closed, a status error or hangup is generated, or a Read()
-  // operation returns Ended. It is safe to deregister a transport multiple
-  // times.
-  virtual void Detach(Ref<Transport> transport) = 0;
-
-  // Changes the polled events on a transport. Event modes cannot be changed
-  // without detaching and re-attaching the transport.
-  virtual PassRef<IOError> ChangeEvents(Ref<Transport> transport, Events events) = 0;
-  virtual PassRef<IOError> AddEvents(Ref<Transport> transport, Events events) = 0;
-  virtual PassRef<IOError> RemoveEvents(Ref<Transport> transport, Events events) = 0;
-
   // Enables thread-safety on the poller. By default, pollers and attached
   // transports can only be used from one thread at a time.
   virtual void EnableThreadSafety() = 0;
-
-  // Shuts down the poller.
-  virtual void Shutdown() = 0;
 
   // Returns true if native edge-triggering support is available.
   virtual bool SupportsEdgeTriggering() = 0;
@@ -246,7 +271,7 @@ class AMIO_LINK PollerFactory
  public:
   // Create a message pump using the best available polling technique. The pump
   // should be freed with |delete| or immediately stored in a ke::AutoPtr.
-  static PassRef<IOError> CreatePoller(Ref<Poller> *outp);
+  static PassRef<IOError> Create(Ref<Poller> *outp);
 
   // Create a message pump based on select(). Although Windows supports select(),
   // AMIO uses IO Completion Ports which supports much more of the Windows API.
@@ -309,12 +334,13 @@ enum AMIO_LINK TransportFlags
   // counterpart.
   kTransportReading       = 0x00000004,
   kTransportWriting       = 0x00000008,
-  kTransportLT            = 0x00000010,
-  kTransportET            = 0x00000020,
-  kTransportArmed         = 0x00000100,
+  kTransportLT            = 0x00000200,
+  kTransportET            = 0x00000400,
+  kTransportProxying      = 0x00001000,
+  kTransportArmed         = 0x00010000,
   kTransportEventMask     = kTransportReading | kTransportWriting,
-  kTransportClearMask     = kTransportEventMask | kTransportET | kTransportLT | kTransportArmed,
   kTransportUserFlagMask  = kTransportNoAutoClose|kTransportNoCloseOnExec,
+  kTransportClearMask     = kTransportUserFlagMask,
 
   kTransportNoFlags       = 0x00000000,
   kTransportDefaultFlags  = kTransportNoFlags
@@ -335,11 +361,11 @@ class AMIO_LINK TransportFactory
 
 // This class can be used to automatically disable SIGPIPE. By default, Poll()
 // will not disable SIGPIPE.
-class AutoDisableSigpipe
+class AutoDisableSigPipe
 {
  public:
-  AutoDisableSigpipe();
-  ~AutoDisableSigpipe();
+  AutoDisableSigPipe();
+  ~AutoDisableSigPipe();
 
  private:
   void (*prev_handler_)(int);

@@ -40,7 +40,7 @@ SelectImpl::Shutdown()
 
   for (size_t i = 0; i < max_fds_; i++) {
     if (fds_[i].transport)
-      fds_[i].transport->detach();
+      detach_for_shutdown_locked(fds_[i].transport);
   }
 }
 
@@ -63,14 +63,13 @@ SelectImpl::attach_locked(PosixTransport *transport, StatusListener *listener, T
   return nullptr;
 }
 
-void
+PassRef<StatusListener>
 SelectImpl::detach_locked(PosixTransport *transport)
 {
   int fd = transport->fd();
   assert(fd != -1);
   assert(fds_[fd].transport == transport);
 
-  transport->detach();
   FD_CLR(fd, &read_fds_);
   FD_CLR(fd, &write_fds_);
   fds_[fd].transport = nullptr;
@@ -86,6 +85,8 @@ SelectImpl::detach_locked(PosixTransport *transport)
       }
     }
   }
+
+  return transport->detach();
 }
 
 PassRef<IOError>
@@ -135,9 +136,9 @@ SelectImpl::handleEvent(fd_set *set, int fd)
 
   AutoMaybeUnlock unlock(lock_);
   if (outFlag == kTransportReading)
-    listener->OnReadReady(transport);
+    listener->OnReadReady();
   else if (outFlag == kTransportWriting)
-    listener->OnWriteReady(transport);
+    listener->OnWriteReady();
 }
 
 PassRef<IOError>
@@ -193,11 +194,4 @@ SelectImpl::Poll(int timeoutMs)
   }
 
   return nullptr;
-}
-
-void
-SelectImpl::Interrupt()
-{
-  // Not yet implemented.
-  abort();
 }

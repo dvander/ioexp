@@ -219,19 +219,16 @@ class ConnectOp
 
   // Both of these are unexpected, but will terminate the connect operation
   // anyway.
-  void OnError(Ref<Transport> transport, Ref<IOError> error) override {
-    reportError(error);
-  }
-  void OnHangup(Ref<Transport> transport) override {
+  void OnHangup(Ref<IOError> error) override {
+    if (!error)
+      error = eUnknownHangup;
     reportError(eUnknownHangup);
   }
 
-  void OnWriteReady(Ref<Transport> transport) override {
-    assert(transport == conn_);
-
+  void OnWriteReady() override {
     int errn;
     socklen_t len = sizeof(errn);
-    int rv = getsockopt(transport->FileDescriptor(), SOL_SOCKET, SO_ERROR, &errn, &len);
+    int rv = getsockopt(conn_->FileDescriptor(), SOL_SOCKET, SO_ERROR, &errn, &len);
     if (rv == -1 || errn != 0) {
       reportError(new PosixError(rv == -1 ? errno : errn));
       return;
@@ -296,7 +293,7 @@ ConnectionForAddress(Ref<PosixConnection> *outp, Ref<Address> address, Protocol 
 }
 
 PassRef<IOError>
-Client::Create(Result *result, Ref<Poller> poller,
+Client::Create(Result *result, Ref<IODispatcher> dispatcher,
                Ref<Address> address, Protocol protocol,
                Ref<Client::Listener> listener,
                Events events, EventMode mode)
@@ -311,14 +308,14 @@ Client::Create(Result *result, Ref<Poller> poller,
 
   int rv = connect(conn->fd(), address->SockAddr(), address->SockAddrLen());
   if (rv == 0) {
-    if (Ref<IOError> error = poller->Attach(conn, listener, events, mode))
+    if (Ref<IOError> error = dispatcher->Attach(conn, listener, events, mode))
       return error;
     result->connection = conn;
     return nullptr;
   }
 
   Ref<ConnectOp> op = new ConnectOp(conn, listener, events);
-  if (Ref<IOError> error = poller->Attach(conn, op, Events::Write, mode))
+  if (Ref<IOError> error = dispatcher->Attach(conn, op, Events::Write, mode))
     return error;
 
   result->operation = op;
@@ -405,9 +402,7 @@ class PosixServer
     ke::RefcountedThreadsafe<PosixServer>::Release();
   }
 
-  void OnReadReady(Ref<Transport> server) override {
-    assert(server == transport_);
-
+  void OnReadReady() override {
     size_t failures = 0;
     while (failures < 10) {
       int rv = accept(transport_->fd(), nullptr, nullptr);
@@ -472,16 +467,11 @@ class PosixServer
         return;
     }
   }
-  void OnHangup(Ref<Transport> server) override {
-    assert(server == transport_);
+  void OnHangup(Ref<IOError> error) override {
     if (closing_)
       return;
-    listener_->OnError(eUnknownHangup, Severity::Fatal);
-  }
-  void OnError(Ref<Transport> server, Ref<IOError> error) override {
-    assert(server == transport_);
-    if (closing_)
-      return;
+    if (!error)
+      error = eUnknownHangup;
     listener_->OnError(error, Severity::Fatal);
   }
 
@@ -504,7 +494,7 @@ class PosixServer
 
 PassRef<IOError>
 Server::Create(Ref<Server> *outp,
-               Ref<Poller> poller,
+               Ref<IODispatcher> dispatcher,
                Ref<Address> address, Protocol protocol,
                Ref<Server::Listener> listener,
                unsigned backlog)
@@ -537,7 +527,7 @@ Server::Create(Ref<Server> *outp,
     return new PosixError();
 
   Ref<PosixServer> server = new PosixServer(transport, listener, local);
-  if (Ref<IOError> error = poller->Attach(transport, server, Events::Read, EventMode::Level))
+  if (Ref<IOError> error = dispatcher->Attach(transport, server, Events::Read, EventMode::Level))
     return error;
 
   *outp = server;

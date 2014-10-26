@@ -44,7 +44,7 @@ KqueueImpl::Shutdown()
 
   for (size_t i = 0; i < listeners_.length(); i++) {
     if (listeners_[i].transport)
-      listeners_[i].transport->detach();
+      detach_for_shutdown(listeners_[i].transport);
   }
 
   close(kq_);
@@ -81,6 +81,7 @@ KqueueImpl::attach_locked(PosixTransport *transport, StatusListener *listener, T
   transport->setUserData(slot);
 
   if (Ref<IOError> error = change_events_locked(transport, flags)) {
+    // Note: don't call OnChangeProxy, we never fully attached.
     detach_locked(transport);
     return error;
   }
@@ -123,7 +124,7 @@ KqueueImpl::change_events_locked(PosixTransport *transport, TransportFlags flags
   return nullptr;
 }
 
-void
+PassRef<StatusListener>
 KqueueImpl::detach_locked(PosixTransport *transport)
 {
   int fd = transport->fd();
@@ -133,12 +134,11 @@ KqueueImpl::detach_locked(PosixTransport *transport)
 
   change_events_locked(transport, kTransportNoFlags);
 
-  // Detach here, just for safety - in case null below frees it.
-  transport->detach();
-
   listeners_[slot].transport = nullptr;
   listeners_[slot].modified = generation_;
   free_slots_.append(slot);
+
+  return transport->detach();
 }
 
 PassRef<IOError>
@@ -214,11 +214,4 @@ KqueueImpl::Poll(int timeoutMs)
     event_buffer_.maybeResize();
 
   return nullptr;
-}
-
-void
-KqueueImpl::Interrupt()
-{
-  // Not yet implemented.
-  abort();
 }

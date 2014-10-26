@@ -29,6 +29,12 @@ class AMIO_LINK Task
   // Asks the task to cancel. Tasks may ignore cancel requests.
   virtual void Cancel()
   {}
+
+  // AMIO does not call |delete| directly. Instead it calls DeleteMe(), so
+  // singleton tasks are possible.
+  virtual void DeleteMe() {
+    delete this;
+  }
 };
 
 // A TaskQueue is a fast container for managing tasks that are processed from
@@ -48,7 +54,8 @@ class AMIO_LINK TaskQueue
   };
 
   // Create a new TaskQueue. The delegate is not owned by the queue. The
-  // delegate may be null.
+  // delegate may be null; if so, the queue does not have a backing
+  // mutex and may not be used on other threads.
   static TaskQueue *Create(Delegate *delegate = nullptr);
 
   // TaskQueues should be freed with |delete|.
@@ -83,6 +90,10 @@ class AMIO_LINK TaskQueue
 
   // Returns true if PostQuit() was called.
   virtual bool ShouldQuit() = 0;
+
+  // If ProcessTasks() is running, it is stopped as soon as possible.
+  // Otherwise, this has no effect.
+  virtual void Break() = 0;
 };
 
 // An event loop encapsulates a TaskQueue and optionally other polling systems.
@@ -109,14 +120,50 @@ class AMIO_LINK EventLoop : public TaskQueue::Delegate
   virtual void Loop() = 0;
 };
 
+// An EventQueue is a wrapper around a poller. Instead of immediately
+// delivering events, it buffers status changes and can deliver them
+// incrementally. This is useful for constructing event loops that
+// prioritize some tasks over others.
+//
+// To use a status queue, simply Poll() and then ask the queue to process
+// events.
+//
+// EventQueues are not thread-safe. All operations must occur on the same
+// thread.
+class EventQueue : public IODispatcher
+{
+ public:
+  static PassRef<EventQueue> Create(Ref<Poller> poller);
+
+  virtual ~EventQueue()
+  {}
+
+  // Process at most one event; returns true if an event was processed.
+  virtual bool DispatchNextEvent() = 0;
+
+  // This has effectively the same behavior as TaskQueue::ProcessTasks().
+  virtual bool DispatchEvents(struct timeval *timelimitp = nullptr, size_t nlimit = 0) = 0;
+
+  // If DispatchEvents() is in progress, then this breaks out of the loop as
+  // soon as possible. Otherwise, it has no effect.
+  virtual void Break() = 0;
+
+  // Shutdown the event queue, removing any pending events. After this, no
+  // more transports may be attached and no events can be polled. This does
+  // not shutdown the underlying poller.
+  virtual void Shutdown() = 0;
+};
+
 // An event loop for I/O multiplexing.
-class AMIO_LINK EventLoopForIO : public EventLoop
+class AMIO_LINK EventLoopForIO
+ : public EventLoop,
+   public IODispatcher
 {
  public:
   // Create an event loop with a Poller. Specify nullptr to create a default poller.
-  static EventLoopForIO *Create(Ref<Poller> poller);
+  static PassRef<IOError> Create(EventLoopForIO **outp, Ref<Poller> poller);
 
-  // Return the poller used for this event loop.
+  // Return the underlying poller used for this event loop.
   virtual PassRef<Poller> GetPoller() = 0;
 };
 

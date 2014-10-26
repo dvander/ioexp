@@ -31,7 +31,6 @@ class KqueueImpl : public PosixPoller
 
   PassRef<IOError> Initialize(size_t absoluteMaxEvents);
   PassRef<IOError> Poll(int timeoutMs) override;
-  void Interrupt() override;
   void Shutdown() override;
   bool SupportsEdgeTriggering() override {
     return true;

@@ -37,6 +37,13 @@ enum class Events : uint32_t
 {
   Read   =  0x4,
   Write  =  0x8,
+
+  // These are used internally. They are not real events and do nothing if
+  // specified.
+  Hangup    = 0x100000,
+  Queued    = 0x200000,
+  Detached  = 0x400000,
+
   None   =  0x0
 };
 KE_DEFINE_ENUM_OPERATORS(Events)
@@ -48,7 +55,7 @@ enum class EventMode : uint32_t
   // true. For example, as long as a write to a socket would not block, the
   // event will be delivered. This is supported on all pollers, and so it is
   // the default mode.
-  Level  = 0x10,
+  Level  = 0x200,
 
   // In edge-triggered mode, events will be delivered only once their status
   // changes from not-true to true. For example, when a write to a socket
@@ -65,7 +72,7 @@ enum class EventMode : uint32_t
   // Edge triggering is not supported with select(), poll(), or Solaris devpoll
   // backends. Use Poller::SupportsEdgeTriggering() to test for this. Adding
   // an edge-triggered event to an incompatible poller will result in an error.
-  Edge   = 0x20,
+  Edge   = 0x400,
 
   // Some backends (noted above) do not support edge-triggering. AMIO's ETS
   // mode can emulate edge-triggering somewhat efficiently on these pollers,
@@ -87,11 +94,20 @@ enum class EventMode : uint32_t
   // triggering is available, then Read/WriteIsBlocked() methods are identical
   // to Poller::AddEvents() with Read or Write. There is a fast shortcut to
   // make these functions close to a no-op.
-  ETS   = 0x40,
+  ETS   = 0x800,
+
+  // The proxy flag indicates that the status listener will be acting as a
+  // proxy for another status listener, and should receive additional
+  // notifications useful for maintaining proxy state.
+  //
+  // Note that modes are usually mutually exclusive, however, the proxying
+  // mode may be or'd with other modes.
+  Proxy  = 0x1000,
 
   // The default mode is level-triggered.
   Default = 0
 };
+KE_DEFINE_ENUM_OPERATORS(EventMode)
 
 // Represents an I/O error.
 class IOError : public ke::RefcountedThreadsafe<IOError>
@@ -108,6 +124,14 @@ class IOError : public ke::RefcountedThreadsafe<IOError>
 
   // A general class the error falls into.
   virtual ErrorType Type() = 0;
+};
+
+// User data that is reference counted.
+class IUserData : public ke::IRefcounted
+{
+ public:
+  virtual ~IUserData()
+  {}
 };
 
 // Specify no timeout in polling operations.

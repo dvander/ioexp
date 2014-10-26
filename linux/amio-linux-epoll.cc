@@ -70,7 +70,7 @@ EpollImpl::Shutdown()
 
   for (size_t i = 0; i < listeners_.length(); i++) {
     if (listeners_[i].transport)
-      listeners_[i].transport->detach();
+      detach_for_shutdown_locked(listeners_[i].transport);
   }
 
   close(ep_);
@@ -104,7 +104,7 @@ EpollImpl::attach_locked(PosixTransport *transport, StatusListener *listener, Tr
   return nullptr;
 }
 
-void
+PassRef<StatusListener>
 EpollImpl::detach_locked(PosixTransport *transport)
 {
   int fd = transport->fd();
@@ -115,13 +115,11 @@ EpollImpl::detach_locked(PosixTransport *transport)
   epoll_event ep;
   ::epoll_ctl(ep_, EPOLL_CTL_DEL, fd, &ep);
 
-  // Just for safety, we detach here in case the assignment below drops the
-  // last ref to the transport.
-  transport->detach();
-
   listeners_[slot].transport = nullptr;
   listeners_[slot].modified = generation_;
   free_slots_.append(slot);
+
+  return transport->detach();
 }
 
 PassRef<IOError>
@@ -176,9 +174,9 @@ EpollImpl::handleEvent(size_t slot)
 
   AutoMaybeUnlock unlock(lock_);
   if (outFlag == kTransportReading)
-    listener->OnReadReady(transport);
+    listener->OnReadReady();
   else if (outFlag == kTransportWriting)
-    listener->OnWriteReady(transport);
+    listener->OnWriteReady();
 }
 
 PassRef<IOError>
@@ -239,11 +237,4 @@ EpollImpl::Poll(int timeoutMs)
   }
 
   return nullptr;
-}
-
-void
-EpollImpl::Interrupt()
-{
-  // Not yet implemented.
-  abort();
 }

@@ -24,7 +24,7 @@ ke::Vector<AutoTestContext *> ke::TestContexts;
 int main(int argc, char **argv)
 {
 #if defined(KE_POSIX)
-  AutoDisableSigpipe disable_sigpipe;
+  AutoDisableSigPipe disable_sigpipe;
 #elif defined(KE_WINDOWS)
   if (Ref<amio::IOError> error = amio::net::StartNetworking()) {
     fprintf(stderr, "Could not start networking: %s\n", error->Message());

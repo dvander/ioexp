@@ -76,12 +76,9 @@ class ClientHelper
   }
 
 #if defined(KE_POSIX)
-  void OnError(Ref<Transport> transport, Ref<IOError> error) override {
+  void OnHangup(Ref<IOError> error) override {
     Terminated = true;
     Error = error;
-  }
-  void OnHangup(Ref<Transport> transport) override {
-    Terminated = true;
   }
 #endif
 

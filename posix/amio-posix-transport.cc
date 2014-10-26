@@ -187,10 +187,22 @@ PosixTransport::attach(PosixPoller *poller, StatusListener *listener)
   listener_ = listener;
 }
 
-void
+PassRef<StatusListener>
 PosixTransport::detach()
 {
   poller_ = nullptr;
-  listener_ = nullptr;
   flags_ &= ~kTransportClearMask;
+  return listener_.take();
+}
+
+void
+PosixTransport::changeListener(Ref<StatusListener> listener)
+{
+  assert(listener_);
+  assert(listener);
+
+  if (isProxying())
+    listener_->OnChangeProxy(listener);
+  else
+    listener_ = listener;
 }

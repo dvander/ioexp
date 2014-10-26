@@ -71,12 +71,12 @@ PollerFactory::CreatePollImpl(Ref<Poller> *outp)
 }
 #endif
 
-AutoDisableSigpipe::AutoDisableSigpipe()
+AutoDisableSigPipe::AutoDisableSigPipe()
 {
   prev_handler_ = signal(SIGPIPE, SIG_IGN);
 }
 
-AutoDisableSigpipe::~AutoDisableSigpipe()
+AutoDisableSigPipe::~AutoDisableSigPipe()
 {
   signal(SIGPIPE, prev_handler_);
 }

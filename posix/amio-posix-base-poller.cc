@@ -28,6 +28,12 @@ EventsToFlags(Events events)
   return TransportFlags(events);
 }
 
+static inline Events
+TransportFlagsToEvents(TransportFlags flags)
+{
+  return Events(flags & (kTransportReading|kTransportWriting));
+}
+
 PassRef<IOError>
 PosixPoller::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, Events events, EventMode mode)
 {
@@ -49,6 +55,8 @@ PosixPoller::Attach(Ref<Transport> baseTransport, Ref<StatusListener> listener, 
     mode = EventMode::Edge;
 
   TransportFlags flags = EventsToFlags(events) | TransportFlags(mode);
+  if ((mode & EventMode::Proxy) == EventMode::Proxy)
+    flags |= kTransportProxying;
 
   return attach_locked(transport, listener, flags);
 }
@@ -60,13 +68,7 @@ PosixPoller::Detach(Ref<Transport> baseTransport)
   if (!transport)
     return;
 
-  // We must acquire the lock before checking the poller, since we could be
-  // detaching on another thread.
-  AutoMaybeLock lock(lock_);
-  if (transport->poller() != this)
-    return;
-
-  detach_locked(transport);
+  detach_unlocked(transport);
 }
 
 PassRef<IOError>
@@ -102,12 +104,19 @@ PosixPoller::RemoveEvents(Ref<Transport> baseTransport, Events events)
 void
 PosixPoller::detach_unlocked(PosixTransport *transport)
 {
-  AutoMaybeLock lock(lock_);
+  bool proxying;
+  Ref<StatusListener> proxy;
+  {
+    AutoMaybeLock lock(lock_);
+    if (transport->poller() != this)
+      return;
 
-  if (transport->poller() != this)
-    return;
+    proxying = transport->isProxying();
+    proxy = detach_locked(transport);
+  }
 
-  detach_locked(transport);
+  if (proxying)
+    proxy->OnProxyDetach();
 }
 
 PassRef<IOError>
@@ -132,9 +141,7 @@ PosixPoller::change_events_unlocked(PosixTransport *transport, TransportFlags fl
   if (transport->poller() != this)
     return eIncompatibleTransport;
 
-  if ((transport->flags() & kTransportEventMask) == flags)
-    return nullptr;
-  return change_events_locked(transport, flags);
+  return change_events_locked_helper(&lock, transport, flags);
 }
 
 PassRef<IOError>
@@ -147,9 +154,7 @@ PosixPoller::add_events_unlocked(PosixTransport *transport, TransportFlags flags
   if (transport->poller() != this)
     return eIncompatibleTransport;
 
-  if ((transport->flags() | flags) == flags)
-    return nullptr;
-  return change_events_locked(transport, transport->flags() | flags);
+  return change_events_locked_helper(&lock, transport, transport->flags() | flags);
 }
 
 PassRef<IOError>
@@ -162,9 +167,26 @@ PosixPoller::rm_events_unlocked(PosixTransport *transport, TransportFlags flags)
   if (transport->poller() != this)
     return eIncompatibleTransport;
 
-  if ((transport->flags() & ~flags) == flags)
+  return change_events_locked_helper(&lock, transport, transport->flags() & ~flags);
+}
+
+PassRef<IOError>
+PosixPoller::change_events_locked_helper(AutoMaybeLock *mlock,
+                                         PosixTransport *transport,
+                                         TransportFlags flags)
+{
+  if (transport->flags() == flags)
     return nullptr;
-  return change_events_locked(transport, transport->flags() & ~flags);
+  if (Ref<IOError> error = change_events_locked(transport, flags))
+    return error;
+
+  if (transport->isProxying()) {
+    Ref<StatusListener> proxy = transport->listener();
+
+    mlock->unlock();
+    proxy->OnChangeEvents(TransportFlagsToEvents(flags));
+  }
+  return nullptr;
 }
 
 // This is called within the poll lock.
@@ -172,11 +194,10 @@ void
 PosixPoller::reportHup_locked(Ref<PosixTransport> transport)
 {
   // Get a local copy of the listener before we wipe it out.
-  Ref<StatusListener> listener = transport->listener();
-  detach_locked(transport);
+  Ref<StatusListener> listener = detach_locked(transport);
 
   AutoMaybeUnlock unlock(lock_);
-  listener->OnHangup(transport);
+  listener->OnHangup(nullptr);
 }
 
 void
@@ -190,11 +211,23 @@ void
 PosixPoller::reportError_locked(Ref<PosixTransport> transport, Ref<IOError> error)
 {
   // Get a local copy of the listener before we wipe it out.
-  Ref<StatusListener> listener = transport->listener();
-  detach_locked(transport);
+  Ref<StatusListener> listener = detach_locked(transport);
 
   AutoMaybeUnlock unlock(lock_);
-  listener->OnError(transport, error);
+  listener->OnHangup(error);
+}
+
+void
+PosixPoller::detach_for_shutdown_locked(PosixTransport *transport)
+{
+  if (transport->isProxying()) {
+    if (Ref<StatusListener> listener = transport->detach()) {
+      AutoMaybeUnlock unlock(lock_);
+      listener->OnProxyDetach();
+    }
+  } else {
+    transport->detach();
+  }
 }
 
 void

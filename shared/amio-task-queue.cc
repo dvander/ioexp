@@ -22,9 +22,11 @@ TaskQueue::Create(Delegate *delegate)
 
 TaskQueueImpl::TaskQueueImpl(Delegate *delegate)
  : delegate_(delegate),
+   got_break_(false),
    got_quit_(false)
 {
-  queue_lock_ = new Mutex();
+  if (delegate_)
+    queue_lock_ = new Mutex();
   incoming_ = new Deque<Task *>();
   work_ = new Deque<Task *>();
   timer_res_ = HighResolutionTimer::Resolution();
@@ -40,7 +42,7 @@ void
 TaskQueueImpl::ZapQueue(Deque<Task *> *queue)
 {
   while (!queue->empty())
-    delete queue->popFrontCopy();
+    queue->popFrontCopy()->DeleteMe();
 }
 
 void
@@ -49,13 +51,14 @@ TaskQueueImpl::PostTask(Task *task)
   assert(task);
 
   {
-    AutoLock lock(queue_lock_);
+    AutoMaybeLock lock(queue_lock_);
     if (!incoming_->append(task))
-      delete task;
+      task->DeleteMe();
   }
 
   // Delegate can't change yet so we don't have grab it during the lock.
-  delegate_->NotifyTask();
+  if (delegate_)
+    delegate_->NotifyTask();
 }
 
 void
@@ -74,7 +77,7 @@ TaskQueueImpl::RefillWorkQueue()
   if (!work_->empty())
     return true;
 
-  AutoLock lock(queue_lock_);
+  AutoMaybeLock lock(queue_lock_);
   if (incoming_->empty())
     return false;
 
@@ -90,8 +93,9 @@ TaskQueueImpl::ProcessNextTask()
   if (!RefillWorkQueue())
     return false;
 
-  AutoPtr<Task> task(work_->popFrontCopy());
+  Task *task = work_->popFrontCopy();
   task->Run();
+  task->DeleteMe();
   return true;
 }
 
@@ -111,6 +115,8 @@ TaskQueueImpl::ProcessTasksForTime(struct timeval *timelimitp, size_t nlimit)
     return ProcessNextTask();
   }
 
+  got_break_ = false;
+
   int64_t maxtime = (timelimitp->tv_sec * kNanosecondsPerSecond) +
                     (timelimitp->tv_usec * kNanosecondsPerMicrosecond);
 
@@ -125,7 +131,7 @@ TaskQueueImpl::ProcessTasksForTime(struct timeval *timelimitp, size_t nlimit)
   size_t count = 0;
   while (ProcessNextTask()) {
     int64_t now = HighResolutionTimer::Counter();
-    if (now >= end || got_quit_)
+    if (now >= end || got_quit_ || got_break_)
       break;
 
     // Check that we haven't exhausted the limit.
@@ -147,11 +153,19 @@ TaskQueueImpl::ProcessTasks(size_t limit)
   if (!ProcessNextTask())
     return false;
 
+  got_break_ = false;
+
   size_t count = 0;
   do {
     if (limit && (++count >= limit))
       break;
-  } while (!got_quit_ && ProcessNextTask());
+  } while (!got_quit_ && !got_break_ && ProcessNextTask());
 
   return true;
+}
+
+void
+TaskQueueImpl::Break()
+{
+  got_break_ = true;
 }

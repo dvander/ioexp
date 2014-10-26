@@ -49,7 +49,7 @@ amio::EnableImmediateDelivery(HANDLE handle)
 }
 
 PassRef<IOError>
-PollerFactory::CreatePoller(Ref<Poller> *poller)
+PollerFactory::Create(Ref<Poller> *poller)
 {
   return CreateCompletionPort(poller, 1);
 }

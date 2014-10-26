@@ -37,13 +37,13 @@ class TestThread
     cond_ = new ConditionVariable();
   }
 
-  void OnWriteReady(Ref<Transport> transport) override {
+  void OnWriteReady() override {
     AutoLock lock(cond_);
     got_write_ = true;
     cond_->Notify();
   }
 
-  void OnReadReady(Ref<Transport> transport) override {
+  void OnReadReady() override {
     AutoLock lock(cond_);
     got_read_ = true;
     cond_->Notify();
@@ -101,7 +101,6 @@ class TestThread
   bool check(bool cond, const char *fmt) {
     if (!::check(cond, "%s", fmt)) {
       Errored = true;
-      poller_->Interrupt();
       return false;
     }
     return true;
@@ -109,7 +108,6 @@ class TestThread
   bool check_error(Ref<IOError> error, const char *fmt) {
     if (!::check_error(error, "%s", fmt)) {
       Errored = true;
-      poller_->Interrupt();
       return false;
     }
     return true;

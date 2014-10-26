@@ -10,7 +10,7 @@
 #ifndef _include_amio_task_queue_h_
 #define _include_amio_task_queue_h_
 
-#include <amio-messaging.h>
+#include <amio-eventloop.h>
 #include <am-thread-utils.h>
 #include <am-deque.h>
 
@@ -28,6 +28,7 @@ class TaskQueueImpl : public TaskQueue
   void PostQuit() override;
   bool ProcessNextTask() override;
   bool ProcessTasks(struct timeval *timelimitp, size_t nlimit) override;
+  void Break() override;
   bool ShouldQuit() override {
     return got_quit_;
   }
@@ -46,6 +47,7 @@ class TaskQueueImpl : public TaskQueue
   AutoPtr<Deque<Task *>> incoming_;
   AutoPtr<Deque<Task *>> work_;
   int64_t timer_res_;
+  bool got_break_;
   volatile bool got_quit_;
 };
 

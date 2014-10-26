@@ -53,6 +53,14 @@ class PosixTransport
   }
   PassRef<IOError> ReadIsBlocked() override;
   PassRef<IOError> WriteIsBlocked() override;
+  bool IsListenerProxying() override {
+    return isProxying();
+  }
+  PassRef<StatusListener> Listener() override {
+    return listener();
+  }
+
+  void changeListener(Ref<StatusListener> listener);
 
   bool attached() {
     if (!poller_.get())
@@ -63,8 +71,15 @@ class PosixTransport
   // Setup the descriptor, if it hasn't been set up already.
   PassRef<IOError> Setup();
 
+  // Must not be called while attached.
   void attach(PosixPoller *poller, StatusListener *listener);
-  void detach();
+
+  // Detach for finalizing the transport.
+  PassRef<StatusListener> detach();
+
+  bool isProxying() const {
+    return !!(flags_ & kTransportProxying);
+  }
 
   int fd() const {
     return fd_;
@@ -75,16 +90,13 @@ class PosixTransport
   PassRef<StatusListener> listener() {
     return listener_;
   }
-  void changeListener(Ref<StatusListener> listener) {
-    listener_ = listener;
-  }
 
   // These are used by message pumps; they should not be called from outside.
   void setUserData(uintptr_t userdata) {
-    userdata_ = userdata;
+    impldata_ = userdata;
   }
   uintptr_t getUserData() const {
-    return userdata_;
+    return impldata_;
   }
 
   TransportFlags &flags() {
@@ -93,7 +105,7 @@ class PosixTransport
 
  private:
   int fd_;
-  uintptr_t userdata_;
+  uintptr_t impldata_;
   TransportFlags flags_;
 
   // These should not cause cycles. When the transport is closed, or when the

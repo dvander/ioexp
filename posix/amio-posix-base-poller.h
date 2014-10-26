@@ -59,8 +59,11 @@ class PosixPoller
     PosixTransport *transport,
     StatusListener *listener,
     TransportFlags flags) = 0;
-  virtual void detach_locked(PosixTransport *transport) = 0;
   virtual PassRef<IOError> change_events_locked(PosixTransport *transport, TransportFlags flags) = 0;
+
+  // If this is called, the caller must ensure OnChangeProxy() will be called
+  // if necessary.
+  virtual PassRef<StatusListener> detach_locked(PosixTransport *transport) = 0;
 
   // Operations that have not yet acquired the poller lock.
   void detach_unlocked(PosixTransport *transport);
@@ -68,12 +71,16 @@ class PosixPoller
   PassRef<IOError> add_events_unlocked(PosixTransport *transport, TransportFlags flags);
   PassRef<IOError> rm_events_unlocked(PosixTransport *transport, TransportFlags flags);
 
+  PassRef<IOError> change_events_locked_helper(AutoMaybeLock *mlock, PosixTransport *transport, TransportFlags flags);
+
   // Helpers.
   PassRef<IOError> add_events_locked(PosixTransport *transport, TransportFlags flags);
   PassRef<IOError> rm_events_locked(PosixTransport *transport, TransportFlags flags);
   void reportHup_locked(Ref<PosixTransport> transport);
   void reportError_locked(Ref<PosixTransport> transport);
   void reportError_locked(Ref<PosixTransport> transport, Ref<IOError> error);
+
+  void detach_for_shutdown_locked(PosixTransport *transport);
 
  protected:
   AutoPtr<Mutex> lock_;

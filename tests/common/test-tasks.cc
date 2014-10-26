@@ -9,7 +9,7 @@
 //
 #include <amio.h>
 #include <amio-net.h>
-#include <amio-messaging.h>
+#include <amio-eventloop.h>
 #include <am-thread-utils.h>
 #include "../testing.h"
 

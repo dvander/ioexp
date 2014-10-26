@@ -314,7 +314,7 @@ class AMIO_LINK Server : public ke::IRefcounted
   // enqueued. Use 0 for the default (usually 128).
   static PassRef<IOError> Create(
     Ref<Server> *server,
-    Ref<Poller> poller,
+    Ref<IODispatcher> dispatcher,
     Ref<Address> address,
     Protocol protocol,
     Ref<Server::Listener> listener,
@@ -382,7 +382,7 @@ class Client
   //  mode:      The event mode to use. Ignored for Windows IOCP.
   static PassRef<IOError> Create(
     Result *result,
-    Ref<Poller> poller,
+    Ref<IODispatcher> dispatcher,
     Ref<Address> address,
     Protocol protocol,
     Ref<Client::Listener> listener,
