@@ -7,16 +7,15 @@
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
-#ifndef _include_amio_linux_epoll_pump_h_
-#define _include_amio_linux_epoll_pump_h_
+#ifndef _include_amio_bsd_kqueue_pump_h_
+#define _include_amio_bsd_kqueue_pump_h_
 
 #include "include/amio.h"
-#include "include/amio-posix.h"
-#include "posix/amio-posix-transport.h"
-#include "posix/amio-posix-base-poller.h"
-#include <sys/time.h>
+#include "include/posix-utils.h"
+#include "shared/amio-shared-pollbuf.h"
+#include "posix/posix-base-poller.h"
 #include <sys/types.h>
-#include <sys/epoll.h>
+#include <sys/event.h>
 #include <am-utility.h>
 #include <am-vector.h>
 
@@ -24,14 +23,13 @@ namespace amio {
 
 using namespace ke;
 
-// This message pump is based on epoll(), which is available in Linux >= 2.5.44.
-class EpollImpl : public PosixPoller
+class KqueueImpl : public PosixPoller
 {
  public:
-  EpollImpl(size_t maxEvents = 0);
-  ~EpollImpl();
+  KqueueImpl();
+  ~KqueueImpl();
 
-  PassRef<IOError> Initialize();
+  PassRef<IOError> Initialize(size_t absoluteMaxEvents);
   PassRef<IOError> Poll(int timeoutMs) override;
   void Shutdown() override;
   bool SupportsEdgeTriggering() override {
@@ -42,7 +40,7 @@ class EpollImpl : public PosixPoller
     PosixTransport *transport,
     StatusListener *listener,
     TransportFlags flags) override;
-  PassRef<StatusListener> detach_locked(PosixTransport *transport) override;
+  void detach_locked(PosixTransport *transport) override;
   PassRef<IOError> change_events_locked(PosixTransport *transport, TransportFlags flags) override;
 
  private:
@@ -50,30 +48,20 @@ class EpollImpl : public PosixPoller
     return listeners_[slot].modified == generation_;
   }
 
-  PassRef<IOError> epoll_ctl(int cmd, size_t slot, int fd, TransportFlags);
-  
-  template <TransportFlags outFlag>
-  inline void handleEvent(size_t slot);
-
  private:
   struct PollData {
     Ref<PosixTransport> transport;
     size_t modified;
   };
 
-  int ep_;
-  bool can_use_rdhup_;
+  int kq_;
   size_t generation_;
-
-  // Note: we currently do not shrink slots.
   ke::Vector<PollData> listeners_;
   ke::Vector<size_t> free_slots_;
 
-  size_t max_events_;
-  size_t absolute_max_events_;
-  ke::AutoArray<epoll_event> event_buffer_;
+  PollBuffer<struct kevent> event_buffer_;
 };
 
 } // namespace amio
 
-#endif // _include_amio_linux_epoll_pump_h_
+#endif // _include_amio_bsd_kqueue_pump_h_

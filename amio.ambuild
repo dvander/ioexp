@@ -26,28 +26,28 @@ def Configure(binary):
   ]
   
   binary.sources += [
-    'shared/amio-errors.cc',
-    'shared/amio-string.cc',
-    'shared/amio-shared-net.cc',
-    'shared/amio-task-queue.cc',
+    'shared/shared-errors.cc',
+    'shared/shared-string.cc',
+    'shared/shared-net.cc',
+    'shared/shared-task-queue.cc',
   ]
 
   if builder.target_platform != 'windows':
     binary.sources += [
-      'posix/amio-posix.cc',
-      'posix/amio-posix-base-poller.cc',
-      'posix/amio-posix-errors.cc',
-      'posix/amio-posix-eventloop.cc',
-      'posix/amio-posix-eventqueue.cc',
-      'posix/amio-posix-transport.cc',
-      'posix/amio-posix-select.cc',
-      'posix/amio-posix-poll.cc', 
-      'posix/amio-posix-net.cc', 
+      'posix/posix-utils.cc',
+      'posix/posix-base-poller.cc',
+      'posix/posix-errors.cc',
+      'posix/posix-event-loop.cc',
+      'posix/posix-event-queue.cc',
+      'posix/posix-transport.cc',
+      'posix/posix-select.cc',
+      'posix/posix-poll.cc',
+      'posix/posix-net.cc',
     ]
     binary.compiler.cflags += ['-fPIC']
     if builder.target_platform != 'mac':
       binary.sources += [
-        'posix/amio-posix-time.cc',
+        'posix/posix-time.cc',
       ]
     else:
       binary.sources += [
@@ -56,13 +56,13 @@ def Configure(binary):
 
   if builder.target_platform == 'linux':
     binary.sources += [
-      'linux/amio-linux.cc',
-      'linux/amio-linux-epoll.cc',
+      'linux/linux-utils.cc',
+      'linux/linux-epoll.cc',
     ]
   elif builder.target_platform in ['mac', 'freebsd', 'openbsd', 'netbsd']:
     binary.sources += [
-      'bsd/amio-bsd.cc',
-      'bsd/amio-bsd-kqueue.cc',
+      'bsd/bsd-utils.cc',
+      'bsd/bsd-kqueue.cc',
     ]
   elif builder.target_platform == 'windows':
     binary.sources += [

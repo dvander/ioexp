@@ -7,8 +7,8 @@
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
-#include "amio-posix-eventloop.h"
-#include "amio-posix-eventqueue.h"
+#include "posix-event-loop.h"
+#include "posix-event-queue.h"
 
 using namespace ke;
 using namespace amio;
@@ -27,7 +27,6 @@ PosixEventLoopForIO::~PosixEventLoopForIO()
   poller_->Detach(read_pipe_);
   poller_->Detach(write_pipe_);
   wakeup_->disable();
-  wakeup_ = nullptr;
 }
 
 Ref<IOError>

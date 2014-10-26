@@ -9,7 +9,7 @@
 //
 #include <assert.h>
 #include <amio-time.h>
-#include "amio-task-queue.h"
+#include "shared-task-queue.h"
 
 using namespace ke;
 using namespace amio;

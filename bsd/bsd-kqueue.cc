@@ -8,7 +8,7 @@
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
 #include "shared/amio-errors.h"
-#include "posix/amio-posix-errors.h"
+#include "posix/posix-errors.h"
 #include "bsd/amio-bsd-kqueue.h"
 #include <unistd.h>
 #include <sys/time.h>

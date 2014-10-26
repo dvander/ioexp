@@ -11,8 +11,7 @@
 #define _include_amio_base_pump_h_
 
 #include "include/amio.h"
-#include "include/amio-posix.h"
-#include "posix/amio-posix-transport.h"
+#include "posix/posix-transport.h"
 #include <am-thread-utils.h>
 
 namespace amio {

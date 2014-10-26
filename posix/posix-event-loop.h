@@ -11,7 +11,7 @@
 #define _include_amio_eventloop_h_
 
 #include <amio-eventloop.h>
-#include "../shared/amio-task-queue.h"
+#include "../shared/shared-task-queue.h"
 
 namespace amio {
 
@@ -80,7 +80,7 @@ class PosixEventLoopForIO
   Ref<Transport> read_pipe_;
   Ref<Transport> write_pipe_;
   Ref<Wakeup> wakeup_;
-  AutoPtr<EventQueue> event_queue_;
+  Ref<EventQueue> event_queue_;
 };
 
 } // namespace amio

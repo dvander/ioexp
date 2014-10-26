@@ -11,8 +11,8 @@
 #define _include_amio_poll_pump_h_
 
 #include "include/amio.h"
-#include "posix/amio-posix-transport.h"
-#include "posix/amio-posix-base-poller.h"
+#include "posix/posix-transport.h"
+#include "posix/posix-base-poller.h"
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/poll.h>

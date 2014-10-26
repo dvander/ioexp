@@ -11,7 +11,7 @@
 #define _include_amio_posix_errors_h_
 
 #include "include/amio.h"
-#include "shared/amio-errors.h"
+#include "shared/shared-errors.h"
 
 namespace amio {
 

@@ -8,10 +8,10 @@
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
 #include "include/amio.h"
-#include "posix/amio-posix-transport.h"
-#include "posix/amio-posix-errors.h"
-#include "linux/amio-linux.h"
-#include "linux/amio-linux-epoll.h"
+#include "posix/posix-transport.h"
+#include "posix/posix-errors.h"
+#include "linux/linux-utils.h"
+#include "linux/linux-epoll.h"
 #include <string.h>
 #include <stdlib.h>
 #include <sys/utsname.h>

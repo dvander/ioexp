@@ -10,28 +10,30 @@
 #include <time.h>
 #include <stdio.h>
 #include <amio-time.h>
-#include "../posix/amio-posix-errors.h"
-//#include <CoreFoundation/CFDate.h>
-#include <mach/mach_time.h>
-#include <sys/time.h>
+#include "posix-errors.h"
 
 using namespace ke;
 using namespace amio;
 
 static int64_t sTimerResolution;
-struct mach_timebase_info sTimerInfo;
+
+static inline int64_t
+timespec_to_int64(const struct timespec &ts)
+{
+  return ts.tv_nsec + int64_t(ts.tv_sec) * kNanosecondsPerSecond;
+}
 
 class DetermineTimerResolution
 {
  public:
   DetermineTimerResolution() {
-    kern_return_t kr = mach_timebase_info(&sTimerInfo);
-    if (kr != KERN_SUCCESS) {
-      fprintf(stderr, "High-resolution clock initialization failed: %d\n", kr);
+    struct timespec rv;
+    if (clock_getres(CLOCK_MONOTONIC, &rv) == -1) {
+      Ref<PosixError> error = new PosixError();
+      fprintf(stderr, "Could not determine clock resolution: %s\n", error->Message());
       return;
     }
-
-    sTimerResolution = int64_t(sTimerInfo.numer) / int64_t(sTimerInfo.denom);
+    sTimerResolution = timespec_to_int64(rv);
   }
 } sDetermineTimerResolution;
 
@@ -44,9 +46,11 @@ HighResolutionTimer::Resolution()
 int64_t
 HighResolutionTimer::Counter()
 {
-  uint64_t now = mach_absolute_time();
-  if (sTimerInfo.numer == 1 && sTimerInfo.denom == 1)
-    return now;
-
-  return (now * sTimerInfo.numer) / int64_t(sTimerInfo.denom);
+  struct timespec rv;
+  if (clock_gettime(CLOCK_MONOTONIC, &rv) == -1) {
+    Ref<PosixError> error = new PosixError();
+    fprintf(stderr, "Failed to read clock: %s\n", error->Message());
+    return 0;
+  }
+  return timespec_to_int64(rv);
 }

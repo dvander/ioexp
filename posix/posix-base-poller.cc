@@ -8,11 +8,10 @@
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
 #include "include/amio.h"
-#include "include/amio-posix.h"
-#include "shared/amio-errors.h"
-#include "posix/amio-posix-transport.h"
-#include "posix/amio-posix-base-poller.h"
-#include "posix/amio-posix-errors.h"
+#include "shared/shared-errors.h"
+#include "posix/posix-transport.h"
+#include "posix/posix-base-poller.h"
+#include "posix/posix-errors.h"
 
 using namespace ke;
 using namespace amio;

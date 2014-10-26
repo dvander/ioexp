@@ -7,10 +7,12 @@
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
-#include "shared/amio-errors.h"
-#include "posix/amio-posix-errors.h"
-#include "posix/amio-posix-poll.h"
-#include "linux/amio-linux.h"
+#include "shared/shared-errors.h"
+#include "posix/posix-errors.h"
+#include "posix/posix-poll.h"
+#if defined(__linux__)
+# include "linux/linux-utils.h"
+#endif
 #include <sys/poll.h>
 #include <string.h>
 

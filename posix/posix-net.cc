@@ -10,10 +10,10 @@
 #include <amio.h>
 #include <amio-net.h>
 #include <am-string.h>
-#include "../posix/amio-posix-errors.h"
-#include "../posix/amio-posix-base-poller.h"
-#include "../posix/amio-posix-transport.h"
-#include "../shared/amio-string.h"
+#include "../shared/shared-string.h"
+#include "../posix/posix-errors.h"
+#include "../posix/posix-base-poller.h"
+#include "../posix/posix-transport.h"
 #include <errno.h>
 #include <unistd.h>
 

@@ -8,11 +8,11 @@
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
 #include "include/amio.h"
-#include "posix/amio-posix-transport.h"
-#include "posix/amio-posix-errors.h"
-#include "posix/amio-posix-select.h"
+#include "posix/posix-transport.h"
+#include "posix/posix-errors.h"
+#include "posix/posix-select.h"
 #if defined(AMIO_POLL_AVAILABLE)
-# include "posix/amio-posix-poll.h"
+# include "posix/posix-poll.h"
 #endif
 #include <unistd.h>
 #include <signal.h>

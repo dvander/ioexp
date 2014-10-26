@@ -7,7 +7,7 @@
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
-#include "amio-posix-eventqueue.h"
+#include "posix-event-queue.h"
 
 using namespace ke;
 using namespace amio;

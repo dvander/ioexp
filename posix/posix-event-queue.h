@@ -12,7 +12,7 @@
 
 #include <amio-eventloop.h>
 #include <am-inlinelist.h>
-#include "../shared/amio-task-queue.h"
+#include "../shared/shared-task-queue.h"
 
 namespace amio {
 

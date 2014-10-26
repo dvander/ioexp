@@ -11,7 +11,6 @@
 #define _include_amio_posix_transport_h_
 
 #include "include/amio.h"
-#include "include/amio-posix.h"
 
 #if defined(_WIN32)
 # error PosixTransport cannot be used on Windows.

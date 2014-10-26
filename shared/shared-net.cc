@@ -15,9 +15,9 @@
 #else
 # include <netdb.h>
 # include <arpa/inet.h>
-# include "../posix/amio-posix-errors.h"
+# include "../posix/posix-errors.h"
 #endif
-#include "../shared/amio-string.h"
+#include "../shared/shared-string.h"
 
 using namespace ke;
 using namespace amio;
