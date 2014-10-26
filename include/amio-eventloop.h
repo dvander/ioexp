@@ -154,7 +154,8 @@ class EventQueue : public IODispatcher
   virtual void Shutdown() = 0;
 };
 
-// An event loop for I/O multiplexing.
+// An event loop for I/O multiplexing. This is essentially a wrapper around
+// a Poller and a single EventQueue. Tasks are prioritized over events.
 class AMIO_LINK EventLoopForIO
  : public EventLoop,
    public IODispatcher

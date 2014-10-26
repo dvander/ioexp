@@ -51,7 +51,7 @@ PosixTransport::Close()
     poller->detach_unlocked(this);
   }
 
-  close(fd_);
+  AMIO_RETRY_IF_EINTR(close(fd_));
   fd_ = -1;
 
   assert(!poller_.get() && !listener_);
@@ -62,7 +62,7 @@ PosixTransport::Read(IOResult *result, void *buffer, size_t maxlength)
 {
   *result = IOResult();
 
-  ssize_t rv = read(fd_, buffer, maxlength);
+  ssize_t rv = AMIO_RETRY_IF_EINTR(read(fd_, buffer, maxlength));
   if (rv == -1) {
     if (errno == EWOULDBLOCK || errno == EAGAIN) {
       if (Ref<IOError> error = ReadIsBlocked()) {
@@ -91,7 +91,7 @@ PosixTransport::Write(IOResult *result, const void *buffer, size_t maxlength)
 {
   *result = IOResult();
 
-  ssize_t rv = write(fd_, buffer, maxlength);
+  ssize_t rv = AMIO_RETRY_IF_EINTR(write(fd_, buffer, maxlength));
   if (rv == -1) {
     if (errno == EWOULDBLOCK || errno == EAGAIN) {
       if (Ref<IOError> error = WriteIsBlocked()) {

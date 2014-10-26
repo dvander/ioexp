@@ -277,7 +277,7 @@ ConnectionForSocket(Ref<PosixConnection> *outp, int fd, AddressFamily af)
       *outp = new PosixConnectionT<UnixAddress>(fd);
       return nullptr;
     default:
-      close(fd);
+      AMIO_RETRY_IF_EINTR(close(fd));
       return eUnsupportedAddressFamily;
   }
 }
@@ -365,7 +365,7 @@ amio::net::ConnectTo(Ref<Connection> *outp, Protocol protocol, Ref<Address> addr
   if (Ref<IOError> error = ConnectionForAddress(&conn, address, protocol))
     return error;
 
-  int rv = connect(conn->fd(), address->SockAddr(), address->SockAddrLen());
+  int rv = AMIO_RETRY_IF_EINTR(connect(conn->fd(), address->SockAddr(), address->SockAddrLen()));
   if (rv == -1)
     return new PosixError();
 
@@ -405,7 +405,7 @@ class PosixServer
   void OnReadReady() override {
     size_t failures = 0;
     while (failures < 10) {
-      int rv = accept(transport_->fd(), nullptr, nullptr);
+      int rv = AMIO_RETRY_IF_EINTR(accept(transport_->fd(), nullptr, nullptr));
       if (rv == -1) {
         switch (errno) {
 #if defined(KE_LINUX)

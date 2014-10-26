@@ -73,7 +73,7 @@ EpollImpl::Shutdown()
       detach_for_shutdown_locked(listeners_[i].transport);
   }
 
-  close(ep_);
+  AMIO_RETRY_IF_EINTR(close(ep_));
   ep_ = -1;
 }
 
@@ -187,8 +187,11 @@ EpollImpl::Poll(int timeoutMs)
   AutoMaybeLock poll_lock(poll_lock_);
 
   int nevents = epoll_wait(ep_, event_buffer_, max_events_, timeoutMs);
-  if (nevents == -1)
+  if (nevents == -1) {
+    if (errno == EINTR)
+      return nullptr;
     return new PosixError();
+  }
 
   // Now we acquire the transport lock.
   AutoMaybeLock lock(lock_);

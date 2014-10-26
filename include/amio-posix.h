@@ -371,6 +371,18 @@ class AutoDisableSigPipe
   void (*prev_handler_)(int);
 };
 
+// Posix system calls can be interrupted on EINTR. This macro will automatically
+// retry syscalls that fail for that reason. This is based on HANDLE_EINTR from
+// Chromium.
+#define AMIO_RETRY_IF_EINTR(expr)                 \
+  ({                                              \
+    __typeof__(expr) syscall_rv;                  \
+    do {                                          \
+      syscall_rv = expr;                          \
+    } while (syscall_rv == -1 && errno == EINTR); \
+    syscall_rv;                                   \
+  })
+
 } // namespace amio
 
 #endif // _include_amio_posix_header_h_

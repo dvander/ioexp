@@ -47,7 +47,7 @@ KqueueImpl::Shutdown()
       detach_for_shutdown(listeners_[i].transport);
   }
 
-  close(kq_);
+  AMIO_RETRY_IF_ENTR(close(kq_));
 }
 
 PassRef<IOError>
@@ -155,8 +155,11 @@ KqueueImpl::Poll(int timeoutMs)
   }
 
   int nevents = kevent(kq_, nullptr, 0, event_buffer_.get(), event_buffer_.length(), timeoutp);
-  if (nevents == -1)
+  if (nevents == -1) {
+    if (errno == EINTR)
+      return nullptr;
     return new PosixError();
+  }
 
   AutoMaybeLock lock(lock_);
 

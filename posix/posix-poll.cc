@@ -199,8 +199,11 @@ PollImpl::Poll(int timeoutMs)
   }
 
   int nevents = poll(poll_buffer, poll_buffer_len, timeoutMs);
-  if (nevents == -1)
+  if (nevents == -1) {
+    if (errno == EINTR)
+      return nullptr;
     return new PosixError();
+  }
   if (nevents == 0)
     return nullptr;
 

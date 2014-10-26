@@ -61,7 +61,7 @@ DevPollImpl::Shutdown()
       fds_[i].transport->detach();
   }
 
-  close(dp_);
+  AMIO_RETRY_IF_EINTR(close(dp_));
 }
 
 static inline PassRef<IOError>
@@ -79,7 +79,7 @@ WriteDevPoll(int dp, int fd, TransportFlags flags)
     pe.events = POLLREMOVE;
   }
 
-  int rv = write(dp, &pe, sizeof(pe));
+  int rv = AMIO_RETRY_IF_EINTR(write(dp, &pe, sizeof(pe)));
   if (rv == -1)
     return new PosixError();
   if (size_t(rv) != sizeof(pe))
@@ -185,7 +185,7 @@ DevPollImpl::Poll(int timeoutMs)
   params.dp_nfds = event_buffer_.length();
   params.dp_timeout = timeoutMs;
 
-  int nevents = ioctl(dp_, DP_POLL, &params);
+  int nevents = AMIO_RETRY_IF_EINTR(ioctl(dp_, DP_POLL, &params));
   if (nevents == -1)
     return new PosixError();
 

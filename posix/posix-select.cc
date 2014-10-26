@@ -173,8 +173,11 @@ SelectImpl::Poll(int timeoutMs)
   }
 
   int result = select(fd_watermark + 1, &read_fds, &write_fds, nullptr, timeoutp);
-  if (result == -1)
+  if (result == -1) {
+    if (errno == EINTR)
+      return nullptr;
     return new PosixError();
+  }
 
   AutoMaybeLock lock(lock_);
 

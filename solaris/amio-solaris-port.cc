@@ -53,7 +53,7 @@ PortImpl::Shutdown()
       fds_[i].transport->detach();
   }
 
-  close(port_);
+  AMIO_RETRY_IF_EINTR(close(port_));
 }
 
 PassRef<IOError>
@@ -186,7 +186,7 @@ PortImpl::Poll(int timeoutMs)
   // return more.
   uint_t nevents = 1;
   if (port_getn(port_, event_buffer->get(), event_buffer->length(), &nevents, timeoutp) == -1) {
-    if (errno == ETIME)
+    if (errno == ETIME || errno == EINTR)
       return nullptr;
     return new PosixError();
   }
