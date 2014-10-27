@@ -11,7 +11,7 @@
 #include <amio-net.h>
 #include <am-string.h>
 #if defined(KE_WINDOWS)
-# include "../windows/amio-windows-errors.h"
+# include "../windows/windows-errors.h"
 #else
 # include <netdb.h>
 # include <arpa/inet.h>

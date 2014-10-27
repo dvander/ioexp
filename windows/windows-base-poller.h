@@ -16,11 +16,16 @@ namespace amio {
 
 using namespace ke;
 
-class WinBasePoller : public Poller
+class WinBasePoller
+ : public Poller,
+   public ke::RefcountedThreadsafe<WinBasePoller>
 {
  public:
   WinBasePoller() : pending_events_(0)
   { }
+
+  KE_IMPL_REFCOUNTING_TS(WinBasePoller);
+
   void addPendingEvent() {
     Ops::Increment(&pending_events_);
   }

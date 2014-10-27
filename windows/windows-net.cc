@@ -409,7 +409,7 @@ class WinServer
 
 PassRef<IOError>
 Server::Create(Ref<Server> *outp,
-               Ref<Poller> poller,
+               Ref<IODispatcher> poller,
                Ref<Address> address, Protocol protocol,
                Ref<Server::Listener> listener,
                unsigned backlog)
@@ -507,7 +507,7 @@ class ConnectOp
 
 PassRef<IOError>
 Client::Create(Result *result,
-               Ref<Poller> poller,
+               Ref<IODispatcher> poller,
                Ref<Address> address,
                Protocol protocol,
                Ref<Client::Listener> listener,

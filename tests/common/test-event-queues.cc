@@ -51,7 +51,6 @@ class TestEventQueues
       if (!check_error(evq->Attach(writer, this, Events::Write, EventMode::Level), "attach writer"))
         return false;
 #else
-# error TODO
 #endif
     }
 
@@ -65,12 +64,20 @@ class TestEventQueues
 
     // Detach writer #0.
     nevents_ = 0;
+#if defined(KE_POSIX)
     poller->Detach(writers[0]);
+#else
+    writers[0]->Close();
+#endif
     if (!check_error(poller->Poll(), "poll"))
       return false;
 
     // Detach writer #1, while enqueued.
+#if defined(KE_POSIX)
     poller->Detach(writers[1]);
+#else
+    writers[1]->Close();
+#endif
 
     // Close writer #2, then poll again.
     writers[2]->Close();
@@ -100,9 +107,11 @@ class TestEventQueues
     return true;
   }
 
+#if defined(KE_POSIX)
   void OnWriteReady() override {
     nevents_++;
   }
+#endif
 
   bool Run() override {
     if (!test_basic())

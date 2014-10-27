@@ -95,9 +95,11 @@ class TestEventLoops
     return true;
   }
 
+#if defined(KE_POSIX)
   void OnWriteReady() override {
     nevents_++;
   }
+#endif
 
   bool Run() override {
     if (!test_basic())

@@ -58,8 +58,7 @@ PassRef<IOError>
 PollerFactory::CreateCompletionPort(Ref<Poller> *poller, size_t numConcurrentThreads)
 {
   Ref<CompletionPort> port = new CompletionPort();
-  Ref<IOError> error = port->Initialize(numConcurrentThreads);
-  if (error)
+  if (Ref<IOError> error = port->Initialize(numConcurrentThreads))
     return error;
   *poller = port;
   return nullptr;
@@ -82,5 +81,17 @@ TransportFactory::CreateFromSocket(Ref<Transport> *outp, SOCKET socket, Transpor
   if (flags & ~(kTransportNoAutoClose))
     return eInvalidFlags;
   *outp = new SocketTransport(socket, flags);
+  return nullptr;
+}
+
+PassRef<IOError>
+TransportFactory::CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp, TransportFlags flags)
+{
+  HANDLE rpipe, wpipe;
+  if (!::CreatePipe(&rpipe, &wpipe, nullptr, 0))
+    return new WinError();
+
+  *readerp = new FileTransport(rpipe, flags);
+  *writerp = new FileTransport(wpipe, flags);
   return nullptr;
 }

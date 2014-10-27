@@ -319,6 +319,23 @@ class AMIO_LINK TransportFactory
     SOCKET socket,
     TransportFlags flags = kTransportDefaultFlags
   );
+
+  static PassRef<IOError> CreatePipe(Ref<Transport> *readerp, Ref<Transport> *writerp,
+                                     TransportFlags flags = kTransportDefaultFlags);
+};
+
+class AMIO_LINK IODispatcher : public ke::IRefcounted
+{
+ public:
+  virtual ~IODispatcher()
+  {}
+
+  // Register a transport to an IO listener. The transport is permanently
+  // attached to the poller; it is automatically removed when the transport
+  // is closed.
+  //
+  // Attach() may be called from any thread.
+  virtual PassRef<IOError> Attach(Ref<Transport> transport, Ref<IOListener> listener) = 0;
 };
 
 // Polling objects. Transports cannot be removed from polling objects once
@@ -333,12 +350,9 @@ class AMIO_LINK TransportFactory
 // transports) will be leaked.
 //
 // Functions are not thread-safe unless otherwise noted.
-class AMIO_LINK Poller : public ke::RefcountedThreadsafe<Poller>
+class AMIO_LINK Poller : public IODispatcher
 {
  public:
-  virtual ~Poller()
-  {}
-
   // The type of a listener, for notifications.
   typedef IOListener Listener;
 
@@ -348,13 +362,6 @@ class AMIO_LINK Poller : public ke::RefcountedThreadsafe<Poller>
   //
   // Poll() may be called from any thread.
   virtual PassRef<IOError> Poll(int timeoutMs = kNoTimeout) = 0;
-
-  // Register a transport to an IO listener. The transport is permanently
-  // attached to the poller; it is automatically removed when the transport
-  // is closed.
-  //
-  // Attach() may be called from any thread.
-  virtual PassRef<IOError> Attach(Ref<Transport> transport, Ref<IOListener> listener) = 0;
 
   // Wait for all pending IO events to complete, and discard them. This will
   // ensure that no memory is leaked before deleting a Poller. All other polling
@@ -392,7 +399,7 @@ class AMIO_LINK PollerFactory
   // Create a poller. By default the backing implementation uses IOCP
   // (I/O Completion Ports) for a single thread, using the default batch
   // version if supported.
-  static PassRef<IOError> CreatePoller(Ref<Poller> *poller);
+  static PassRef<IOError> Create(Ref<Poller> *poller);
 
   // Create an I/O Completion Port poller.
   static PassRef<IOError> CreateCompletionPort(Ref<Poller> *poller, size_t nConcurrentThreads);
