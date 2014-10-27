@@ -9,7 +9,7 @@
 #ifndef _include_amio_windows_base_poller_h_
 #define _include_amio_windows_base_poller_h_
 
-#include <amio-windows.h>
+#include <amio.h>
 #include <am-atomics.h>
 
 namespace amio {

@@ -6,44 +6,48 @@
 // 
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
-#ifndef _include_amio_windows_file_h_
-#define _include_amio_windows_file_h_
+#ifndef _include_amio_windows_socket_h_
+#define _include_amio_windows_socket_h_
 
-#include <amio-windows.h>
-#include "amio-windows-transport.h"
+#include <amio.h>
+#include "windows-transport.h"
 
 namespace amio {
 
 using namespace ke;
 
 class WinBasePoller;
+class WinBaseSocketPoller;
 
-class FileTransport : public WinTransport
+class SocketTransport : public WinTransport
 {
  public:
-  FileTransport(HANDLE handle, TransportFlags flags);
-  ~FileTransport();
+  SocketTransport(SOCKET socket, TransportFlags flags);
+  ~SocketTransport();
 
   bool Read(IOResult *r, Ref<IOContext> context, void *buffer, size_t length) override;
   bool Write(IOResult *r, Ref<IOContext> context, const void *buffer, size_t length) override;
 
   void Close() override;
   bool Closed() override {
-    return handle_ == INVALID_HANDLE_VALUE || handle_ == NULL;
+    return socket_ == INVALID_SOCKET;
   }
-  HANDLE Handle() override {
-    return handle_;
+  virtual HANDLE Handle() override {
+    return (HANDLE)socket_;
+  }
+  virtual SOCKET socket() const {
+    return socket_;
   }
   int LastError() override {
-    return GetLastError();
+    return WSAGetLastError();
   }
 
-  PassRef<IOError> EnableImmediateDelivery() override;
+  virtual PassRef<IOError> EnableImmediateDelivery();
 
  protected:
-  HANDLE handle_;
+  SOCKET socket_;
 };
 
 } // namespace amio
 
-#endif // _include_amio_windows_file_h_
+#endif // _include_amio_windows_socket_h_

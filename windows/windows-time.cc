@@ -7,10 +7,10 @@
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
-#include <amio-windows.h>
+#include <amio.h>
 #include <amio-time.h>
 #include <am-thread-utils.h>
-#include "amio-windows-errors.h"
+#include "windows-errors.h"
 #include <time.h>
 #include <stdio.h>
 #include <Mmsystem.h>

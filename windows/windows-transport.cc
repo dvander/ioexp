@@ -7,12 +7,12 @@
 // the alliedmodders i/o library is licensed under the gnu general public
 // license, version 3 or higher. for more information, see license.txt
 //
-#include <amio-windows.h>
-#include "amio-windows-context.h"
-#include "amio-windows-errors.h"
-#include "amio-windows-base-poller.h"
-#include "amio-windows-transport.h"
-#include "amio-windows-util.h"
+#include <amio.h>
+#include "windows-context.h"
+#include "windows-errors.h"
+#include "windows-base-poller.h"
+#include "windows-transport.h"
+#include "windows-util.h"
 #include <limits.h>
 
 using namespace amio;

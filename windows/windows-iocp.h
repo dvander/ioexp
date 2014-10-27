@@ -9,8 +9,8 @@
 #ifndef _include_amio_windows_iocp_h_
 #define _include_amio_windows_iocp_h_
 
-#include <amio-windows.h>
-#include "amio-windows-base-poller.h"
+#include <amio.h>
+#include "windows-base-poller.h"
 
 namespace amio {
 

@@ -10,10 +10,10 @@
 #include <amio.h>
 #include <amio-net.h>
 #include <Mswsock.h>
-#include "../shared/amio-errors.h"
-#include "../windows/amio-windows-errors.h"
-#include "../windows/amio-windows-base-poller.h"
-#include "../windows/amio-windows-socket.h"
+#include "../shared/shared-errors.h"
+#include "../windows/windows-errors.h"
+#include "../windows/windows-base-poller.h"
+#include "../windows/windows-socket.h"
 #include <am-vector.h>
 #include <am-thread-utils.h>
 

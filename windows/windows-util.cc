@@ -7,13 +7,13 @@
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
-#include <amio-windows.h>
-#include "../shared/amio-errors.h"
-#include "amio-windows-errors.h"
-#include "amio-windows-util.h"
-#include "amio-windows-file.h"
-#include "amio-windows-socket.h"
-#include "amio-windows-iocp.h"
+#include <amio.h>
+#include "../shared/shared-errors.h"
+#include "windows-errors.h"
+#include "windows-util.h"
+#include "windows-file.h"
+#include "windows-socket.h"
+#include "windows-iocp.h"
 #include <WinSock2.h>
 
 using namespace amio;

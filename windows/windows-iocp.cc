@@ -7,11 +7,11 @@
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
-#include "amio-windows-errors.h"
-#include "amio-windows-util.h"
-#include "amio-windows-transport.h"
-#include "amio-windows-context.h"
-#include "amio-windows-iocp.h"
+#include "windows-errors.h"
+#include "windows-util.h"
+#include "windows-transport.h"
+#include "windows-context.h"
+#include "windows-iocp.h"
 
 using namespace amio;
 using namespace ke;

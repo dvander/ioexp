@@ -9,7 +9,7 @@
 #ifndef _include_amio_windows_util_h_
 #define _include_amio_windows_util_h_
 
-#include <amio-windows.h>
+#include <amio.h>
 
 namespace amio {
 

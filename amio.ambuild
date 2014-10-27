@@ -66,15 +66,15 @@ def Configure(binary):
     ]
   elif builder.target_platform == 'windows':
     binary.sources += [
-      'windows/amio-windows-context.cc',
-      'windows/amio-windows-errors.cc',
-      'windows/amio-windows-file.cc',
-      'windows/amio-windows-iocp.cc',
-      'windows/amio-windows-net.cc',
-      'windows/amio-windows-socket.cc',
-      'windows/amio-windows-time.cc',
-      'windows/amio-windows-transport.cc',
-      'windows/amio-windows-util.cc',
+      'windows/windows-context.cc',
+      'windows/windows-errors.cc',
+      'windows/windows-file.cc',
+      'windows/windows-iocp.cc',
+      'windows/windows-net.cc',
+      'windows/windows-socket.cc',
+      'windows/windows-time.cc',
+      'windows/windows-transport.cc',
+      'windows/windows-util.cc',
     ]
   elif builder.target_platform == 'solaris':
     binary.sources += [

@@ -9,8 +9,8 @@
 #ifndef _include_amio_windows_errors_h_
 #define _include_amio_windows_errors_h_
 
-#include <amio-windows.h>
-#include "../shared/amio-errors.h"
+#include <amio.h>
+#include "../shared/shared-errors.h"
 
 namespace amio {
 
