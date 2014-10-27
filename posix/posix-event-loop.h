@@ -11,6 +11,7 @@
 #define _include_amio_eventloop_h_
 
 #include <amio-eventloop.h>
+#include "posix-event-queue.h"
 #include "../shared/shared-task-queue.h"
 
 namespace amio {
@@ -19,13 +20,13 @@ using namespace ke;
 
 class PosixEventLoopForIO
  : public EventLoopForIO,
-   public ke::RefcountedThreadsafe<PosixEventLoopForIO>
+   public ke::Refcounted<PosixEventLoopForIO>
 {
  public:
   PosixEventLoopForIO(Ref<Poller> poller);
   ~PosixEventLoopForIO();
 
-  KE_IMPL_REFCOUNTING_TS(PosixEventLoopForIO);
+  KE_IMPL_REFCOUNTING(PosixEventLoopForIO);
 
   Ref<IOError> Initialize();
 
@@ -50,20 +51,21 @@ class PosixEventLoopForIO
   }
 
  private:
+  void OnWakeup();
+
+ private:
   class Wakeup
    : public StatusListener,
      public ke::Refcounted<Wakeup>
   {
    public:
     Wakeup(PosixEventLoopForIO *parent)
-     : parent_(parent),
-       write_blocked_(false)
+     : parent_(parent)
     {}
 
     KE_IMPL_REFCOUNTING(Wakeup);
 
     void OnReadReady() override;
-    void OnWriteReady() override;
 
     void disable() {
       parent_ = nullptr;
@@ -71,7 +73,6 @@ class PosixEventLoopForIO
 
    private:
     PosixEventLoopForIO *parent_;
-    bool write_blocked_;
   };
 
  private:
@@ -80,7 +81,8 @@ class PosixEventLoopForIO
   Ref<Transport> read_pipe_;
   Ref<Transport> write_pipe_;
   Ref<Wakeup> wakeup_;
-  Ref<EventQueue> event_queue_;
+  Ref<EventQueueImpl> event_queue_;
+  volatile bool received_wakeup_;
 };
 
 } // namespace amio

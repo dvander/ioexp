@@ -47,7 +47,7 @@ class TaskQueueImpl : public TaskQueue
   AutoPtr<Deque<Task *>> incoming_;
   AutoPtr<Deque<Task *>> work_;
   int64_t timer_res_;
-  bool got_break_;
+  volatile bool got_break_;
   volatile bool got_quit_;
 };
 

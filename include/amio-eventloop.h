@@ -162,7 +162,7 @@ class AMIO_LINK EventLoopForIO
 {
  public:
   // Create an event loop with a Poller. Specify nullptr to create a default poller.
-  static PassRef<IOError> Create(EventLoopForIO **outp, Ref<Poller> poller);
+  static PassRef<IOError> Create(Ref<EventLoopForIO> *outp, Ref<Poller> poller);
 
   // Return the underlying poller used for this event loop.
   virtual PassRef<Poller> GetPoller() = 0;
