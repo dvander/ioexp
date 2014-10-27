@@ -7,9 +7,9 @@
 // The AlliedModders I/O library is licensed under the GNU General Public
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
-#include "shared/amio-errors.h"
+#include "shared/shared-errors.h"
 #include "posix/posix-errors.h"
-#include "bsd/amio-bsd-kqueue.h"
+#include "bsd/bsd-kqueue.h"
 #include <unistd.h>
 #include <sys/time.h>
 #include <limits.h>
@@ -44,10 +44,10 @@ KqueueImpl::Shutdown()
 
   for (size_t i = 0; i < listeners_.length(); i++) {
     if (listeners_[i].transport)
-      detach_for_shutdown(listeners_[i].transport);
+      detach_for_shutdown_locked(listeners_[i].transport);
   }
 
-  AMIO_RETRY_IF_ENTR(close(kq_));
+  AMIO_RETRY_IF_EINTR(close(kq_));
 }
 
 PassRef<IOError>
@@ -190,7 +190,7 @@ KqueueImpl::Poll(int timeoutMs)
         Ref<StatusListener> listener = transport->listener();
 
         AutoMaybeUnlock unlock(lock_);
-        listener->OnReadReady(transport);
+        listener->OnReadReady();
         break;
       }
 
@@ -203,7 +203,7 @@ KqueueImpl::Poll(int timeoutMs)
         Ref<StatusListener> listener = transport->listener();
 
         AutoMaybeUnlock unlock(lock_);
-        listener->OnWriteReady(transport);
+        listener->OnWriteReady();
         break;
       }
 

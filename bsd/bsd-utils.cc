@@ -8,7 +8,7 @@
 // License, version 3 or higher. For more information, see LICENSE.txt
 //
 #include "include/amio.h"
-#include "bsd/amio-bsd-kqueue.h"
+#include "bsd/bsd-kqueue.h"
 
 using namespace amio;
 using namespace ke;

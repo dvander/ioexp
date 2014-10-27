@@ -11,8 +11,7 @@
 #define _include_amio_bsd_kqueue_pump_h_
 
 #include "include/amio.h"
-#include "include/posix-utils.h"
-#include "shared/amio-shared-pollbuf.h"
+#include "shared/shared-pollbuf.h"
 #include "posix/posix-base-poller.h"
 #include <sys/types.h>
 #include <sys/event.h>
@@ -40,7 +39,7 @@ class KqueueImpl : public PosixPoller
     PosixTransport *transport,
     StatusListener *listener,
     TransportFlags flags) override;
-  void detach_locked(PosixTransport *transport) override;
+  PassRef<StatusListener> detach_locked(PosixTransport *transport) override;
   PassRef<IOError> change_events_locked(PosixTransport *transport, TransportFlags flags) override;
 
  private:

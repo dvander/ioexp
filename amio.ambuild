@@ -51,7 +51,7 @@ def Configure(binary):
       ]
     else:
       binary.sources += [
-        'bsd/amio-mach-time.cc',
+        'bsd/mach-time.cc',
       ]
 
   if builder.target_platform == 'linux':
