@@ -249,25 +249,29 @@ class WinServer
 
   PassRef<IOError> Setup() {
     DWORD ignore;
-    GUID guid = WSAID_ACCEPTEX;
-    int rv = WSAIoctl(
-      transport_->socket(),
-      SIO_GET_EXTENSION_FUNCTION_POINTER,
-      &guid, sizeof(guid),
-      &acceptex_, sizeof(acceptex_),
-      &ignore, nullptr, nullptr);
-    if (rv == SOCKET_ERROR)
-      return new WinsockError();
+    {
+      GUID guid = WSAID_ACCEPTEX;
+      int rv = WSAIoctl(
+        transport_->socket(),
+        SIO_GET_EXTENSION_FUNCTION_POINTER,
+        &guid, sizeof(guid),
+        &acceptex_, sizeof(acceptex_),
+        &ignore, nullptr, nullptr);
+      if (rv == SOCKET_ERROR)
+        return new WinsockError();
+    }
 
-    guid = WSAID_GETACCEPTEXSOCKADDRS;
-    rv = WSAIoctl(
-      transport_->socket(),
-      SIO_GET_EXTENSION_FUNCTION_POINTER,
-      &guid, sizeof(guid),
-      &getAcceptExSockAddrs_, sizeof(getAcceptExSockAddrs_),
-      &ignore, nullptr, nullptr);
-    if (rv == SOCKET_ERROR)
-      return new WinsockError();
+    {
+      GUID guid = WSAID_GETACCEPTEXSOCKADDRS;
+      int rv = WSAIoctl(
+        transport_->socket(),
+        SIO_GET_EXTENSION_FUNCTION_POINTER,
+        &guid, sizeof(guid),
+        &getAcceptExSockAddrs_, sizeof(getAcceptExSockAddrs_),
+        &ignore, nullptr, nullptr);
+      if (rv == SOCKET_ERROR)
+        return new WinsockError();
+    }
     
     // We should really start a request for each polling thread...
     return StartRequest();
@@ -289,7 +293,7 @@ class WinServer
     return address_;
   }
 
-  void OnOther(Ref<Transport> transport, IOResult &r) override {
+  void OnCompleted(IOResult &r) override {
     // Immediately enqueue another request. If this fails we're kind of hosed.
     if (Ref<IOError> error = StartRequest()) {
       listener_->OnError(error, Severity::Fatal);
@@ -302,8 +306,6 @@ class WinServer
 
     // Extract the request and then give the context back.
     Ref<AcceptRequest> request = (AcceptRequest *)*r.context->UserData();
-    assert(transport_ == transport);
-
     putContext(r.context);
 
     if (r.error) {
@@ -366,24 +368,25 @@ class WinServer
     if (Ref<IOError> error = SocketForAddress(&socket, address_->Family(), protocol_))
       return error;
 
-    Ref<AcceptRequest> request = new AcceptRequest(socket, address_);
+    Ref<AcceptRequest> accept = new AcceptRequest(socket, address_);
     Ref<IOContext> context = getContext();
-    context->SetUserData(request);
+    context->SetUserData(accept);
 
     DWORD ignore;
+    BeginOverlappedRequest request(transport_, context, RequestType::Other);
     BOOL rv = acceptex_(
       transport_->socket(),
-      request->conn->socket(),
-      request->buffer,
+      accept->conn->socket(),
+      accept->buffer,
       0,                          // dwReceiveDataLength
-      request->local_buflen + 16, // dwLocalAddressLength
-      request->peer_buflen + 16,  // dwRemoteAddressLength
+      accept->local_buflen + 16, // dwLocalAddressLength
+      accept->peer_buflen + 16,  // dwRemoteAddressLength
       &ignore,                    // lpdwBytesReceived
-      (WSAOVERLAPPED *)context->LockForOverlappedIO(transport_, RequestType::Other));
+      (WSAOVERLAPPED *)request.overlapped());
     if (!rv) {
       DWORD err = WSAGetLastError();
       if (err != ERROR_IO_PENDING) {
-        context->UnlockForFailedOverlappedIO();
+        request.Cancel();
         return new WinError(err);
       }
     }
@@ -480,8 +483,7 @@ class ConnectOp
   void Release() override {
     ke::RefcountedThreadsafe<ConnectOp>::Release();
   }
-  void OnOther(Ref<Transport> transport, IOResult &r) override {
-    assert(transport == conn_);
+  void OnCompleted(IOResult &r) override {
     if (r.error) {
       listener_->OnConnectFailed(r.error);
       return;
@@ -496,7 +498,7 @@ class ConnectOp
   }
 
   void Cancel() override {
-    context_->Cancel();
+    conn_->Cancel(context_);
   }
 
  private:
@@ -547,6 +549,7 @@ Client::Create(Result *result,
   if (Ref<IOError> error = poller->Attach(conn, op))
     return error;
 
+  BeginOverlappedRequest request(conn, context, RequestType::Other);
   BOOL ok = connectEx(
     conn->socket(),
     address->SockAddr(),
@@ -554,11 +557,11 @@ Client::Create(Result *result,
     nullptr, // lpSendBuffer
     0,       // dwSendDataLength
     nullptr, // lpdwBytesSent
-    context->LockForOverlappedIO(conn, RequestType::Other));
+    request.overlapped());
   if (!ok) {
     DWORD err = WSAGetLastError();
     if (err != ERROR_IO_PENDING) {
-      context->UnlockForFailedOverlappedIO();
+      request.Cancel();
       return new WinError(err);
     }
   } else {

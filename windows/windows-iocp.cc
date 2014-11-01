@@ -20,9 +20,7 @@ Ref<GenericError> eTooManyThreads = new GenericError("too many threads trying to
 
 CompletionPort::CompletionPort()
  : port_(NULL),
-   concurrent_threads_(0),
-   immediate_delivery_(false),
-   immediate_delivery_required_(false)
+   concurrent_threads_(0)
 {
 }
 
@@ -33,34 +31,23 @@ CompletionPort::~CompletionPort()
 }
 
 PassRef<IOError>
-CompletionPort::Initialize(size_t numConcurrentThreads)
+CompletionPort::Initialize(size_t numConcurrentThreads, size_t nMaxEventsPerPoll)
 {
   port_ = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, numConcurrentThreads);
   if (!port_)
     return new WinError();
+
+  if (!buffers_.init(16, nMaxEventsPerPoll))
+    return eOutOfMemory;
 
   concurrent_threads_ = numConcurrentThreads;
   return nullptr;
 }
 
 PassRef<IOError>
-CompletionPort::Attach(Ref<Transport> baseTransport, Ref<IOListener> listener)
+CompletionPort::attach_unlocked(WinTransport *transport, IOListener *listener)
 {
-  WinTransport *transport = baseTransport->toWinTransport();
-  if (!transport)
-    return eIncompatibleTransport;
-  if (transport->listener())
-    return eTransportAlreadyAttached;
-  if (transport->Closed())
-    return eTransportClosed;
-
-  if (immediate_delivery_ && !transport->ImmediateDelivery()) {
-    Ref<IOError> error = transport->EnableImmediateDelivery();
-    if (error && immediate_delivery_required_)
-      return error;
-  }
-
-  if (!CreateIoCompletionPort(transport->Handle(), port_, 0, 0))
+  if (!CreateIoCompletionPort(transport->Handle(), port_, reinterpret_cast<ULONG_PTR>(transport), 0))
     return new WinError();
 
   transport->attach(this, listener);
@@ -68,111 +55,161 @@ CompletionPort::Attach(Ref<Transport> baseTransport, Ref<IOListener> listener)
 }
 
 PassRef<IOError>
-CompletionPort::Poll(int timeoutMs)
+CompletionPort::post_unlocked(WinContext *context, IOListener *listener)
 {
-  // We try to get at least one valid event.
-  DWORD start = GetTickCount();
-  DWORD nextTimeout = timeoutMs;
-  while (true) {
-    size_t nevents;
-    if (Ref<IOError> error = InternalPoll(nextTimeout, &nevents))
-      return error;
-    if (nevents)
-      return nullptr;
-
-    if (timeoutMs == kNoTimeout)
-      continue;
-
-    nextTimeout = timeoutMs - (GetTickCount() - start);
-    if (nextTimeout <= 0)
-      return nullptr;
+  {
+    // Take the lock, since we could race with detach() in Poll().
+    AutoMaybeLock lock(lock_);
+    WinBasePoller::link(context, listener, RequestType::Message);
   }
+
+  if (!PostQueuedCompletionStatus(port_, 0, reinterpret_cast<ULONG_PTR>(listener), context->ov())) {
+    Ref<IOError> error = new WinError();
+    AutoMaybeLock lock(lock_);
+    WinBasePoller::unlink(context, listener);
+    return error;
+  }
+
+  return nullptr;
 }
 
 PassRef<IOError>
-CompletionPort::InternalPoll(int timeoutMs, size_t *nevents)
+CompletionPort::Poll(int timeoutMs)
 {
-  *nevents = 0;
+  if (!gGetQueuedCompletionStatusEx)
+    return InternalPollOne(timeoutMs);
 
-  DWORD numBytes;
-  ULONG_PTR key;
-  OVERLAPPED *ovp;
-  BOOL rv = GetQueuedCompletionStatus(port_, &numBytes, &key, &ovp, timeoutMs);
-  if (!rv && !ovp) {
+  MultiPollBuffer<OVERLAPPED_ENTRY>::Use use(buffers_);
+  PollBuffer<OVERLAPPED_ENTRY> *buffer = use.get();
+  if (!buffer)
+    return eOutOfMemory;
+
+  ULONG nevents;
+  if (!gGetQueuedCompletionStatusEx(port_, buffer->get(), buffer->length(), &nevents, timeoutMs, FALSE)) {
     DWORD error = GetLastError();
     if (error == WAIT_TIMEOUT)
       return nullptr;
     return new WinError(error);
   }
 
-  // Note that we don't use Ref<> here. There's an extra ref from when we
-  // initiated the IO event. Even after we call detach(), the context wil be
-  // held alive by the IOResult.
-  WinContext *context = WinContext::fromOverlapped(ovp);
-  assert(context->state() != RequestType::None);
+  for (size_t i = 0; i < nevents; i++) {
+    OVERLAPPED_ENTRY &entry = buffer->at(i);
+    WinContext *context = WinContext::fromOverlapped(entry.lpOverlapped);
+
+    Dispatch(context, entry, -1);
+  }
+
+  if (nevents == buffer->length())
+    buffer->maybeResize();
+
+  return nullptr;
+}
+
+PassRef<IOError>
+CompletionPort::PollOne(int timeoutMs)
+{
+  return InternalPollOne(timeoutMs);
+}
+
+PassRef<IOError>
+CompletionPort::InternalPollOne(int timeoutMs)
+{
+  OVERLAPPED_ENTRY entry;
+  BOOL rv = GetQueuedCompletionStatus(port_, &entry.dwNumberOfBytesTransferred, &entry.lpCompletionKey, &entry.lpOverlapped, timeoutMs);
+  if (!rv && !entry.lpOverlapped) {
+    DWORD error = GetLastError();
+    if (error == WAIT_TIMEOUT)
+      return nullptr;
+    return new WinError(error);
+  }
+
+  // Note: On 32-bit Windows, WSAGetLastError() is just a wrapper around
+  // GetLastError().
+  DWORD error = 0;
+  if (!rv)
+    error = GetLastError();
+
+  Dispatch(WinContext::fromOverlapped(entry.lpOverlapped), entry, error);
+  return nullptr;
+}
+
+// Note that we don't use Ref<> here. There's an extra ref from when we
+// initiated the IO event. Even after we call detach(), the context will be 
+// held alive by the IOResult.
+//
+// Note: It's very important that we call WinContext::detach() - until that
+// point, we *cannot* early-return!
+bool
+CompletionPort::Dispatch(WinContext *context, OVERLAPPED_ENTRY &entry, DWORD error)
+{
+  Ref<IOListener> listener;
+
+  // We take the lock at this point - since we could race with changeListener
+  // or WinContext::cancel().
+  RequestType request;
+  {
+    AutoMaybeLock lock(lock_);
+
+    request = context->state();
+    switch (request) {
+      case RequestType::Cancelled:
+      case RequestType::Read:
+      case RequestType::Write:
+      case RequestType::Other: {
+        Ref<WinTransport> transport = AlreadyRefed<WinTransport>(reinterpret_cast<WinTransport *>(entry.lpCompletionKey));
+
+        // If we have a transport and it's closed - or the IO operation was
+        // cancelled - just leave now. Note we always grab the transport even
+        // if the state was Cancelled, since we have to free the ref.
+        if (request == RequestType::Cancelled)
+          return false;
+
+        // Would be much nicer if we could use RtlNtStatusToDosError() here, but
+        // the Internal bits on OVERLAPPED are documented as, well, internal.
+        if (error == -1)
+          error = transport->GetOverlappedError(entry.lpOverlapped);
+
+        listener = transport->listener();
+        break;
+      }
+      case RequestType::Message:
+        listener = AlreadyRefed<IOListener>(reinterpret_cast<IOListener *>(entry.lpCompletionKey));
+        break;
+      default:
+        assert(false);
+        break;
+    }
+
+    // Detach the context. After this point, we can return whenever we want.
+    // Note that the object has already been refed above, so we always pass
+    // nullptr here.
+    WinBasePoller::unlink(context, static_cast<IRefcounted *>(nullptr));
+  }
 
   IOResult result;
-  result.bytes = numBytes;
+  result.bytes = entry.dwNumberOfBytesTransferred;
   result.completed = true;
   result.context = context;
-  if (!rv) {
-    DWORD error = context->transport()->LastError();
+  if (error) {
     if (error == ERROR_HANDLE_EOF)
       result.ended = true;
     else
       result.error = new WinError(error);
   }
 
-  // Detach the context.
-  RequestType state = context->state();
-  Ref<WinTransport> transport = context->transport();
-  context->detach();
-
-  // If the transport is closed, just eat the event. The refcount will drop to
-  // zero (hopefully) once we exit the poll operation, which will also free
-  // any attached user data.
-  if (transport->Closed())
-    return nullptr;
-
-  // Notify. Note that we must do this even if the transport has been closed;
-  // otherwise, there is no way for the user to free contexts.
-  switch (state) {
+  switch (request) {
     case RequestType::Read:
-      transport->listener()->OnRead(transport, result);
+      listener->OnRead(result);
       break;
     case RequestType::Write:
-      transport->listener()->OnWrite(transport, result);
+      listener->OnWrite(result);
       break;
     case RequestType::Other:
-      transport->listener()->OnOther(transport, result);
-      break;
-    case RequestType::Cancelled:
+    case RequestType::Message:
+      listener->OnCompleted(result);
       break;
   }
 
-  *nevents = 1;
-  return nullptr;
-}
-
-bool
-CompletionPort::EnableImmediateDelivery()
-{
-  if (immediate_delivery_)
-    return true;
-
-  if (!gSetFileCompletionNotificationModes)
-    return false;
-
-  immediate_delivery_ = true;
-  return true;
-}
-
-bool
-CompletionPort::RequireImmediateDelivery()
-{
-  if (!EnableImmediateDelivery())
-    return false;
-  immediate_delivery_required_ = true;
   return true;
 }
 
@@ -189,10 +226,28 @@ CompletionPort::WaitAndDiscardPendingEvents()
         break;
     }
 
-    // Note: we don't call Release() or use Ref<> here. Calling detach() calls
-    // Release(), so after we assume it may have been deleted.
     WinContext *context = WinContext::fromOverlapped(ovp);
     assert(context->state() != RequestType::None);
-    context->detach();
+
+    switch (context->state()) {
+      case RequestType::Cancelled:
+      case RequestType::Read:
+      case RequestType::Write:
+      case RequestType::Other:
+        reinterpret_cast<WinTransport *>(context->ov())->Release();
+        break;
+      case RequestType::Message:
+        reinterpret_cast<IOListener *>(context->ov())->Release();
+        break;
+    }
+
+    // We already derefed the object above so pass null here.
+    WinBasePoller::unlink(context, static_cast<IRefcounted *>(nullptr));
   }
+}
+
+bool
+CompletionPort::enable_immediate_delivery_locked()
+{
+  return gSetFileCompletionNotificationModes != nullptr;
 }

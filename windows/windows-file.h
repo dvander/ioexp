@@ -24,8 +24,8 @@ class FileTransport : public WinTransport
   FileTransport(HANDLE handle, TransportFlags flags);
   ~FileTransport();
 
-  bool Read(IOResult *r, Ref<IOContext> context, void *buffer, size_t length) override;
-  bool Write(IOResult *r, Ref<IOContext> context, const void *buffer, size_t length) override;
+  bool read(IOResult *r, WinBasePoller *poller, WinContext *context, void *buffer, size_t length) override;
+  bool write(IOResult *r, WinBasePoller *poller, WinContext *context, const void *buffer, size_t length) override;
 
   void Close() override;
   bool Closed() override {
@@ -34,11 +34,9 @@ class FileTransport : public WinTransport
   HANDLE Handle() override {
     return handle_;
   }
-  int LastError() override {
-    return GetLastError();
-  }
 
   PassRef<IOError> EnableImmediateDelivery() override;
+  DWORD GetOverlappedError(OVERLAPPED *ovp) override;
 
  protected:
   HANDLE handle_;

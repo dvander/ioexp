@@ -11,38 +11,39 @@
 
 #include <amio.h>
 #include "windows-base-poller.h"
+#include "../shared/shared-pollbuf.h"
 
 namespace amio {
 
 using namespace ke;
-
-static const size_t kDefaultMaxEventsPerPortPoll;
 
 class CompletionPort : public WinBasePoller
 {
  public:
   CompletionPort();
   ~CompletionPort();
-  PassRef<IOError> Initialize(size_t numConcurrentThreads);
+  PassRef<IOError> Initialize(size_t numConcurrentThreads, size_t nMaxEventsPerPoll);
 
   PassRef<IOError> Poll(int timeoutMs) override;
-  PassRef<IOError> Attach(Ref<Transport> transport, Ref<IOListener> listener) override;
-  bool EnableImmediateDelivery() override;
-  bool RequireImmediateDelivery() override;
+  PassRef<IOError> PollOne(int timeoutMs) override;
   void WaitAndDiscardPendingEvents() override;
+
+  virtual PassRef<IOError> attach_unlocked(WinTransport *transport, IOListener *listener) override;
+  virtual PassRef<IOError> post_unlocked(WinContext *context, IOListener *listener) override;
+  virtual bool enable_immediate_delivery_locked() override;
 
   size_t NumConcurrentThreads() override {
     return concurrent_threads_;
   }
 
  private:
-  PassRef<IOError> InternalPoll(int timeoutMs, size_t *nevents);
+  PassRef<IOError> InternalPollOne(int timeoutMs);
+  bool Dispatch(WinContext *context, OVERLAPPED_ENTRY &entry, DWORD error);
 
  private:
   HANDLE port_;
   size_t concurrent_threads_;
-  bool immediate_delivery_;
-  bool immediate_delivery_required_;
+  MultiPollBuffer<OVERLAPPED_ENTRY> buffers_;
 };
 
 } // namespace amio

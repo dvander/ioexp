@@ -116,14 +116,10 @@ SocketTransport::EnableImmediateDelivery()
 }
 
 bool
-SocketTransport::Read(IOResult *r, Ref<IOContext> baseContext, void *buffer, size_t length)
+SocketTransport::read(IOResult *r, WinBasePoller *poller, WinContext *context, void *buffer, size_t length)
 {
-  WinContext *context = checkOp(r, baseContext, length);
-  if (!context)
-    return false;
-
   // See note in FileTransport::Read().
-  context->attach(RequestType::Read, this);
+  poller->link(context, this, RequestType::Read);
 
   DWORD flags = 0;
   DWORD bytesRead;
@@ -134,7 +130,7 @@ SocketTransport::Read(IOResult *r, Ref<IOContext> baseContext, void *buffer, siz
   DWORD error = (rv == 0) ? 0 : WSAGetLastError();
 
   if (rv == 0 && (error != WSA_IO_PENDING && error != WSAEMSGSIZE)) {
-    context->detach();
+    poller->unlink(context, this);
     *r = IOResult(new WinError(error), context);
     return false;
   }
@@ -153,20 +149,16 @@ SocketTransport::Read(IOResult *r, Ref<IOContext> baseContext, void *buffer, siz
   // NB: WSAEMSGSIZE is not WSA_IO_PENDING, so it will never queue an item.
   if (ImmediateDelivery() || error == WSAEMSGSIZE) {
     r->context = context;
-    context->detach();
+    poller->unlink(context, this);
   }
   return true;
 }
 
 bool
-SocketTransport::Write(IOResult *r, Ref<IOContext> baseContext, const void *buffer, size_t length)
+SocketTransport::write(IOResult *r, WinBasePoller *poller, WinContext *context, const void *buffer, size_t length)
 {
-  WinContext *context = checkOp(r, baseContext, length);
-  if (!context)
-    return false;
-
   // See note in FileTransport::Read().
-  context->attach(RequestType::Write, this);
+  poller->link(context, this, RequestType::Write);
 
   DWORD flags = 0;
   DWORD bytesSent;
@@ -177,7 +169,7 @@ SocketTransport::Write(IOResult *r, Ref<IOContext> baseContext, const void *buff
   DWORD error = (rv == 0) ? 0 : WSAGetLastError();
 
   if (rv == 0 && error != WSA_IO_PENDING) {
-    context->detach();
+    poller->unlink(context, this);
     *r = IOResult(new WinError(error), context);
     return false;
   }
@@ -190,7 +182,16 @@ SocketTransport::Write(IOResult *r, Ref<IOContext> baseContext, const void *buff
   r->completed = true;
   if (ImmediateDelivery()) {
     r->context = context;
-    context->detach();
+    poller->unlink(context, this);
   }
   return true;
+}
+
+DWORD
+SocketTransport::GetOverlappedError(OVERLAPPED *ovp)
+{
+  DWORD ignore1, ignore2;
+  if (!WSAGetOverlappedResult(socket_, ovp, &ignore1, FALSE, &ignore2))
+    return WSAGetLastError();
+  return 0;
 }

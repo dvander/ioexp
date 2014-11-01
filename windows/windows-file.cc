@@ -51,17 +51,14 @@ FileTransport::EnableImmediateDelivery()
 }
 
 bool
-FileTransport::Read(IOResult *r, Ref<IOContext> baseContext, void *buffer, size_t length)
+FileTransport::read(IOResult *r, WinBasePoller *poller, WinContext *context, void *buffer, size_t length)
 {
-  WinContext *context = checkOp(r, baseContext, length);
-  if (!context)
-    return false;
-
   // We have to attach the context before we potentially send something to a
   // completion port. Otherwise, it could be resolved and dequeued on another
   // thread before we get a chance to increment its reference, and Poll() could
   // prematurely destroy it.
-  context->attach(RequestType::Read, this);
+  poller->link(context, this, RequestType::Read);
+
   *r = IOResult();
 
   DWORD bytesRead;
@@ -75,7 +72,7 @@ FileTransport::Read(IOResult *r, Ref<IOContext> baseContext, void *buffer, size_
   {
     // Some kind of unrecognizable error occurred. Nothing will be posted to
     // the port, hopefully.
-    context->detach();
+    poller->unlink(context, this);
     *r = IOResult(new WinError(error), context);
     return false;
   }
@@ -103,21 +100,17 @@ FileTransport::Read(IOResult *r, Ref<IOContext> baseContext, void *buffer, size_
   if (ImmediateDelivery()) {
     // No event will be posted to the IOCP, so steal back our reference.
     r->context = context;
-    context->detach();
+    poller->unlink(context, this);
   }
 
   return true;
 }
 
 bool
-FileTransport::Write(IOResult *r, Ref<IOContext> baseContext, const void *buffer, size_t length)
+FileTransport::write(IOResult *r, WinBasePoller *poller, WinContext *context, const void *buffer, size_t length)
 {
-  WinContext *context = checkOp(r, baseContext, length);
-  if (!context)
-    return false;
-
   // See the comment in Read().
-  context->attach(RequestType::Read, this);
+  poller->link(context, this, RequestType::Write);
   *r = IOResult();
 
   DWORD bytesWritten;
@@ -127,7 +120,7 @@ FileTransport::Write(IOResult *r, Ref<IOContext> baseContext, const void *buffer
   if (error && error != ERROR_IO_PENDING) {
     // Some kind of unrecognizable error occurred. Nothing will be posted to
     // the port, hopefully.
-    context->detach();
+    poller->unlink(context, this);
     *r = IOResult(new WinError(error), context);
     return false;
   }
@@ -142,8 +135,17 @@ FileTransport::Write(IOResult *r, Ref<IOContext> baseContext, const void *buffer
   if (ImmediateDelivery()) {
     // No event will be posted to the IOCP, so steal back our reference.
     r->context = context;
-    context->detach();
+    poller->unlink(context, this);
   }
 
   return true;
+}
+
+DWORD
+FileTransport::GetOverlappedError(OVERLAPPED *ovp)
+{
+  DWORD ignore;
+  if (!GetOverlappedResult(handle_, ovp, &ignore, FALSE))
+    return GetLastError();
+  return 0;
 }

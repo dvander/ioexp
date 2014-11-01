@@ -25,12 +25,21 @@ typedef BOOL (WINAPI *SetFileCompletionNotificationModes_t)(
   _In_ HANDLE FileHandle,
   _In_ UCHAR Flags
 );
+typedef BOOL (WINAPI *GetQueuedCompletionStatusEx_t)(
+  _In_ HANDLE CompletionPort,
+  _Out_writes_to_(ulCount, *ulNumEntriesRemoved) LPOVERLAPPED_ENTRY lpCompletionPortEntries,
+  _In_ ULONG ulCount,
+  _Out_ PULONG ulNumEntriesRemoved,
+  _In_ DWORD dwMilliseconds,
+  _In_ BOOL fAlertable
+);
 
 PassRef<IOError>
 EnableImmediateDelivery(HANDLE handle);
 
 extern CancelIoEx_t gCancelIoEx;
 extern SetFileCompletionNotificationModes_t gSetFileCompletionNotificationModes;
+extern GetQueuedCompletionStatusEx_t gGetQueuedCompletionStatusEx;
 
 
 } // namespace amio

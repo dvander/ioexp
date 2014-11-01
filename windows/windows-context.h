@@ -20,6 +20,8 @@ class WinBasePoller;
 
 class WinContext : public IOContext
 {
+  friend class WinBasePoller;
+
  public:
   WinContext(uintptr_t value = 0);
   WinContext(Ref<IUserData> data, uintptr_t value = 0);
@@ -38,7 +40,6 @@ class WinContext : public IOContext
   void SetUserData(Ref<IUserData> data) override {
     data_ = data;
   }
-  void Cancel() override;
 
   OVERLAPPED *ov() {
     return &ov_;
@@ -46,9 +47,6 @@ class WinContext : public IOContext
   WinContext *toWinContext() override {
     return this;
   }
-
-  OVERLAPPED *LockForOverlappedIO(Ref<Transport> transport, RequestType request) override;
-  void UnlockForFailedOverlappedIO() override;
 
   static WinContext *fromOverlapped(OVERLAPPED *op) {
     return reinterpret_cast<WinContext *>(
@@ -59,24 +57,27 @@ class WinContext : public IOContext
   RequestType state() const {
     return request_;
   }
-  PassRef<WinTransport> transport() {
-    return transport_;
-  }
 
+  // Set the state to cancelled; returns true if the state could be changed.
+  // This should be called within a Poller lock.
+  bool cancel_locked();
+
+ private:
   // When attaching for asynchronous IO, we add an extra ref in case the caller
   // loses all refs to the context.
-  void attach(RequestType state, PassRef<WinTransport> transport);
+  void attach(RequestType type);
   void detach();
 
  private:
   OVERLAPPED ov_;
   uintptr_t value_;
-  RequestType request_;
-  Ref<WinTransport> transport_;
   Ref<IUserData> data_;
+  RequestType request_;
 
-  // Unfortunately we need to hold this in case the transport loses its poller.
-  Ref<WinBasePoller> poller_;
+  // We allow re-using contexts for Message requests (which are only created
+  // through Poller::Post(). To make sure we don't clear the request type too
+  // early, we use a counter.
+  uintptr_t count_;
 };
 
 } // namespace amio

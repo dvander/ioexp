@@ -21,6 +21,7 @@ using namespace ke;
 
 CancelIoEx_t amio::gCancelIoEx;
 SetFileCompletionNotificationModes_t amio::gSetFileCompletionNotificationModes;
+GetQueuedCompletionStatusEx_t amio::gGetQueuedCompletionStatusEx;
 
 class InitFunctions
 {
@@ -33,6 +34,7 @@ class InitFunctions
     gSetFileCompletionNotificationModes =
       (SetFileCompletionNotificationModes_t)GetProcAddress(kernel32, "SetFileCompletionNotificationModes");
     gCancelIoEx = (CancelIoEx_t)GetProcAddress(kernel32, "CancelIoEx");
+    gGetQueuedCompletionStatusEx = (GetQueuedCompletionStatusEx_t)GetProcAddress(kernel32, "GetQueuedCompletionStatusEx");
 
     FreeLibrary(kernel32);
   }
@@ -55,10 +57,10 @@ PollerFactory::Create(Ref<Poller> *poller)
 }
 
 PassRef<IOError>
-PollerFactory::CreateCompletionPort(Ref<Poller> *poller, size_t numConcurrentThreads)
+PollerFactory::CreateCompletionPort(Ref<Poller> *poller, size_t numConcurrentThreads, size_t nMaxEventsPerPoll)
 {
   Ref<CompletionPort> port = new CompletionPort();
-  if (Ref<IOError> error = port->Initialize(numConcurrentThreads))
+  if (Ref<IOError> error = port->Initialize(numConcurrentThreads, nMaxEventsPerPoll))
     return error;
   *poller = port;
   return nullptr;

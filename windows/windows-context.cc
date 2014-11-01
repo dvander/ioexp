@@ -30,7 +30,8 @@ IOContext::New(Ref<IUserData> data, uintptr_t value)
 
 WinContext::WinContext(uintptr_t value)
  : value_(value),
-   request_(RequestType::None)
+   request_(RequestType::None),
+   count_(0)
 {
   memset(&ov_, 0, sizeof(ov_));
 }
@@ -38,67 +39,83 @@ WinContext::WinContext(uintptr_t value)
 WinContext::WinContext(Ref<IUserData> data, uintptr_t value)
  : data_(data),
    value_(value),
-   request_(RequestType::None)
+   request_(RequestType::None),
+   count_(0)
 {
   memset(&ov_, 0, sizeof(ov_));
 }
 
 void
-WinContext::attach(RequestType type, PassRef<WinTransport> transport)
+WinContext::attach(RequestType type)
 {
-  // Add a reference because the kernel now owns the OVERLAPPED*.
-  AddRef();
   request_ = type;
-  transport_ = transport;
-  poller_ = transport_->poller();
-  poller_->addPendingEvent();
+  if (request_ == RequestType::Message)
+    count_++;
 }
 
 void
 WinContext::detach()
 {
-  poller_->removePendingEvent();
-  poller_ = nullptr;
-  transport_ = nullptr;
+  if (request_ == RequestType::Message) {
+    if (--count_ != 0)
+      return;
+  }
   request_ = RequestType::None;
+}
 
-  // Release the reference we added for the kernel.
-  Release();
+BeginOverlappedRequest::BeginOverlappedRequest(Ref<Transport> baseTransport, Ref<IOContext> baseContext, RequestType type)
+{
+  // Validate the request type.
+  switch (type) {
+    case RequestType::Read:
+    case RequestType::Write:
+    case RequestType::Other:
+      break;
+    default:
+      return;
+  }
+
+  // Validate the context.
+  WinContext *context = baseContext->toWinContext();
+  if (context->state() != RequestType::None)
+    return;
+
+  // Validate the transport.
+  WinTransport *transport = baseTransport->toWinTransport();
+  Ref<WinBasePoller> poller = transport->get_poller();
+  if (!poller)
+    return;
+
+  poller->link(context, transport, type);
+  poller_ = poller;
+  transport_ = transport;
+  context_ = context;
 }
 
 OVERLAPPED *
-WinContext::LockForOverlappedIO(Ref<Transport> transport, RequestType request)
+BeginOverlappedRequest::overlapped() const
 {
-  WinTransport *wint = transport->toWinTransport();
-  if (!wint ||
-      request == RequestType::None ||
-      request == RequestType::Cancelled ||
-      !wint->poller() ||
-      request_ != RequestType::None)
-  {
+  if (!context_)
     return nullptr;
-  }
-
-  attach(request, wint);
-  return ov();
+  return context_->toWinContext()->ov();
 }
 
 void
-WinContext::UnlockForFailedOverlappedIO()
+BeginOverlappedRequest::Cancel()
 {
-  if (request_ != RequestType::None)
-    detach();
-}
-
-void
-WinContext::Cancel()
-{
-  if (request_ == RequestType::None)
+  if (!poller_)
     return;
-  
-  // Note that even if we manage to call CancelIoEx(), we'll still get a packet
-  // queued to the port. Thus, we don't detach here.
-  request_ = RequestType::Cancelled;
-  if (gCancelIoEx)
-    gCancelIoEx(transport_->Handle(), ov());
+
+  poller_->toWinBasePoller()->unlink(context_->toWinContext(), transport_->toWinTransport());
 }
+
+bool
+WinContext::cancel_locked()
+{
+  if (request_ == RequestType::None || request_ == RequestType::Message)
+    return false;
+
+  request_ = RequestType::Cancelled;
+  return true;
+}
+  

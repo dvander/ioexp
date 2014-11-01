@@ -25,8 +25,8 @@ class SocketTransport : public WinTransport
   SocketTransport(SOCKET socket, TransportFlags flags);
   ~SocketTransport();
 
-  bool Read(IOResult *r, Ref<IOContext> context, void *buffer, size_t length) override;
-  bool Write(IOResult *r, Ref<IOContext> context, const void *buffer, size_t length) override;
+  bool read(IOResult *r, WinBasePoller *poller, WinContext *context, void *buffer, size_t length) override;
+  bool write(IOResult *r, WinBasePoller *poller, WinContext *context, const void *buffer, size_t length) override;
 
   void Close() override;
   bool Closed() override {
@@ -38,11 +38,9 @@ class SocketTransport : public WinTransport
   virtual SOCKET socket() const {
     return socket_;
   }
-  int LastError() override {
-    return WSAGetLastError();
-  }
 
-  virtual PassRef<IOError> EnableImmediateDelivery();
+  virtual PassRef<IOError> EnableImmediateDelivery() override;
+  virtual DWORD GetOverlappedError(OVERLAPPED *ovp) override;
 
  protected:
   SOCKET socket_;

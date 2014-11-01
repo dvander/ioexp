@@ -26,14 +26,18 @@ class WinBasePoller;
 // Forward declarations.
 class IOListener;
 class Transport;
+class Poller;
 
 enum class RequestType
 {
   None,
+  Cancelled,
+  Message,
+
+  // Generic operations.
   Read,
   Write,
-  Other,
-  Cancelled
+  Other
 };
 
 // IO operations must be associated with a context object. A context can be
@@ -65,28 +69,42 @@ class IOContext : public ke::RefcountedThreadsafe<IOContext>
   // Set user data.
   virtual void SetUserData(Ref<IUserData> data) = 0;
 
-  // Return an OVERLAPPED for custom WinAPI events. This locks the context
-  // for the specified event until the event has been posted back to the
-  // completion port.
-  //
-  // The request must not be "None" or "Cancelled", the transport must be
-  // attached to a poller, and the context must not already be locked or in
-  // use. If any of those conditions are not met, this function returns null.
-  virtual OVERLAPPED *LockForOverlappedIO(
-    Ref<Transport> transport,
-    RequestType request) = 0;
-
-  // Contexts are automatically unlocked once they have been received through
-  // an IO completion port. However, if an operation fails and no event is
-  // enqueued, it must be unlocked.
-  virtual void UnlockForFailedOverlappedIO() = 0;
-
-  // Cancel an in-progress IO operation. Note that in a multi-threaded app,
-  // take care that the context is not re-used while the cancel initiates.
-  virtual void Cancel() = 0;
-
   // Access to internal types.
   virtual WinContext *toWinContext() = 0;
+};
+
+// Helper class for custom consumers of OVERLAPPED *.
+class BeginOverlappedRequest
+{
+ public:
+  // This binds the context for the specified event until the event has been
+  // posted back to the completion port, or Cancel() is called on this request
+  // object.
+  //
+  // The request must be "Read", "Write", or "Other"; the transport must be
+  // attached to a poller; and the context must not already be bound. If any
+  // any of those conditions are not met, overlapped() will return null.
+  BeginOverlappedRequest(Ref<Transport> transport, Ref<IOContext> context, RequestType type);
+
+  // Return the OVERLAPPED * that should be used for the request.
+  OVERLAPPED *overlapped() const;
+
+  // Contexts are automatically unbound once they have been received through
+  // an IO completion port. However, if an operation fails and no event is
+  // enqueued, it must be manually unbound. For example:
+  //
+  //    BeginOverlappedRequest request(transport, context, RequestType::Other);
+  //    if (!SomeAsyncWinAPICall(blah, request.overlapped())) {
+  //      request.Cancel();
+  //    ...
+  //
+  // The request should not be cancelled under any other circumstance.
+  void Cancel();
+
+ private:
+  Ref<Poller> poller_;
+  Ref<Transport> transport_;
+  Ref<IOContext> context_;
 };
 
 // The result of an IO operation. Testing the state of an IO operation typically
@@ -183,7 +201,13 @@ struct IOResult
 // notification of completed events is not guaranteed to happen in-order.
 // It is the application's responsibility to resolve this.
 //
-// Functions are not thread-safe unless otherwise noted.
+// Unlike the Transport in the POSIX API, Pollers do not implicitly own a
+// reference to Windows Transports. IOContexts do, however. A transport that
+// is attached to a poller, but has no references and no active I/O operations,
+// will be closed and detached.
+//
+// Transport operations are threadsafe with respect to itself and its attached
+// Poller unless otherwise noted.
 class AMIO_LINK Transport : public ke::RefcountedThreadsafe<Transport>
 {
  public:
@@ -205,7 +229,7 @@ class AMIO_LINK Transport : public ke::RefcountedThreadsafe<Transport>
   // context, either through immediate completion or delivery through an event
   // listener.
   //
-  // Thread-safe with respect to other Transport operations, and Poller::Poll().
+  // Transports must be attached to call Read().
   virtual bool Read(IOResult *r, ke::Ref<IOContext> context, void *buffer, size_t length) = 0;
 
   // Initiates a write operation using the supplied buffer. If the operation
@@ -223,7 +247,7 @@ class AMIO_LINK Transport : public ke::RefcountedThreadsafe<Transport>
   // context, either through immediate completion or delivery through an event
   // listener.
   //
-  // Thread-safe with respect to other Transport operations, and Poller::Poll().
+  // Transports must be attached to call Write().
   virtual bool Write(IOResult *r, ke::Ref<IOContext> context, const void *buffer, size_t length) = 0;
 
   // Helper version of Read() that automatically allocates a new context.
@@ -239,6 +263,11 @@ class AMIO_LINK Transport : public ke::RefcountedThreadsafe<Transport>
   //
   // Thread-safe with respect to other Transport operations, and Poller::Poll().
   IOResult Write(const void *buffer, size_t length, uintptr_t data = 0);
+
+  // Cancel an in-progress IO operation. This may be called from any thread.
+  // Contexts in-use with Post() cannot be cancelled. Cancel() has no effect
+  // if the transport has been closed.
+  virtual void Cancel(Ref<IOContext> context) = 0;
 
   // Close the transport. This does not guarantee any pending IO events will
   // be cancelled; events may still be posted to the poller if a transport is
@@ -275,15 +304,15 @@ class AMIO_LINK IOListener : public ke::IRefcounted
   {}
 
   // Receives any read events posted from a Read() operation on a transport.
-  virtual void OnRead(ke::Ref<Transport> transport, IOResult &io)
+  virtual void OnRead(IOResult &io)
   {}
 
   // Receives any write events posted from a Write() operation on a transport.
-  virtual void OnWrite(ke::Ref<Transport> transport, IOResult &io)
+  virtual void OnWrite(IOResult &io)
   {}
 
   // Receives events initiated through WinAPI with an "Other" context request.
-  virtual void OnOther(ke::Ref<Transport> transport, IOResult &io)
+  virtual void OnCompleted(IOResult &io)
   {}
 };
 
@@ -338,9 +367,9 @@ class AMIO_LINK IODispatcher : public ke::IRefcounted
   virtual PassRef<IOError> Attach(Ref<Transport> transport, Ref<IOListener> listener) = 0;
 };
 
-// Polling objects. Transports cannot be removed from polling objects once
-// attached. Once attached, IO operations on the transport will always
-// associate the underlying poller.
+// The primary, if only way to implement true I/O multiplexing on Windows is
+// with I/O Completion Ports. Thus, the API for Poller maps 1:1 onto IOCP
+// behavior.
 //
 // Note that contexts are not destroyed when a poller is destroyed, because
 // of the way asynchronous I/O works in Windows. Pending events may be sitting
@@ -356,12 +385,14 @@ class AMIO_LINK Poller : public IODispatcher
   // The type of a listener, for notifications.
   typedef IOListener Listener;
 
-  // Poll for new events. If timeoutMs is 0, then polling will not block. If
-  // timeoutMs is greater than 0, it may block for at most that many
+  // Poll for new notifications. If timeoutMs is 0, then polling will not
+  // block. If timeoutMs is greater than 0, it may block for at most that many
   // milliseconds. If timeoutMs is kNoTimeout, it may block indefinitely.
-  //
-  // Poll() may be called from any thread.
   virtual PassRef<IOError> Poll(int timeoutMs = kNoTimeout) = 0;
+
+  // Same as Poll(), except at most one event will be processed. This is the
+  // default behavior on operating systems before Windows Vista.
+  virtual PassRef<IOError> PollOne(int timeoutMs = kNoTimeout) = 0;
 
   // Wait for all pending IO events to complete, and discard them. This will
   // ensure that no memory is leaked before deleting a Poller. All other polling
@@ -389,6 +420,18 @@ class AMIO_LINK Poller : public IODispatcher
   // you to handle less edge cases.
   virtual bool RequireImmediateDelivery() = 0;
 
+  // Enable multi-threading on this poller.
+  virtual void EnableThreadSafety() = 0;
+
+  // Post an event directly into the poller. The context must not be in-use. On
+  // success, it will be returned in a future call to Poll() or PollOnce()
+  // through IOListener::OnCompleted. Until that time, the context is in-use
+  // and may not be re-used except for future calls to Post().
+  //
+  // The IOResult will have bytes = 0, ended = false, completed = true,
+  // moreData = true, and completed = true.
+  virtual PassRef<IOError> Post(Ref<IOContext> context, Ref<IOListener> listener) = 0;
+
   // Cast to internal types.
   virtual WinBasePoller *toWinBasePoller() = 0;
 };
@@ -401,8 +444,11 @@ class AMIO_LINK PollerFactory
   // version if supported.
   static PassRef<IOError> Create(Ref<Poller> *poller);
 
-  // Create an I/O Completion Port poller.
-  static PassRef<IOError> CreateCompletionPort(Ref<Poller> *poller, size_t nConcurrentThreads);
+  // Create an I/O Completion Port poller. The maximum number of threads that
+  // can poll without blocking can be specified with nConcurrentThreads. If
+  // nMaxEventsPerPoll is greater than 0, the poller will limit how many events
+  // it will dequeue per poll.
+  static PassRef<IOError> CreateCompletionPort(Ref<Poller> *poller, size_t nConcurrentThreads, size_t nMaxEventsPerPoll = 0);
 };
 
 } // namespace amio
