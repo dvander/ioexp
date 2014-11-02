@@ -275,7 +275,8 @@ class AMIO_LINK Transport : public ke::RefcountedThreadsafe<Transport>
   // discard any events received on closed transports.
   // 
   // If you have allocated data associated with a context, it is best to use
-  // IUserData so it is always freed.
+  // IUserData so it is always freed, since any pending IO operations will
+  // not post back their context.
   virtual void Close() = 0;
 
   // Returns true if the handle has been closed.

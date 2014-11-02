@@ -26,7 +26,6 @@ runner.compiler.linkflags += [KE.static_lib.binary]
 
 runner.sources += [
   'main.cc',
-  'common/test-event-queues.cc',
   'common/test-event-loops.cc',
   'common/test-network.cc',
   'common/test-server-client.cc',
@@ -39,6 +38,7 @@ if builder.target_platform == 'windows':
   ]
 else:
   runner.sources += [
+    'posix/test-event-queues.cc',
     'posix/test-pipes.cc',
     'posix/test-threading.cc',
   ]

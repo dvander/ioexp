@@ -147,12 +147,18 @@ TestServerClient::Run()
     return false;
 
   server->Close();
+  server = nullptr;
 
   // Try to connect again. We should get an error.
   cli_helper = new ClientHelper();
   if (!Client::Create(&client, poller_, address, Protocol::TCP, cli_helper)) {
     if (!check(client.connection == nullptr, "should not have connected"))
       return false;
+
+#if defined(KE_WINDOWS)
+    // Sleep for one second to give the network stack time to catch up.
+    Sleep(1000);
+#endif
 
     if (!check_error(poller_->Poll(), "poll for error"))
       return false;

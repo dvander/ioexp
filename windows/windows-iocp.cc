@@ -144,6 +144,10 @@ CompletionPort::Dispatch(WinContext *context, OVERLAPPED_ENTRY &entry, DWORD err
 {
   Ref<IOListener> listener;
 
+  IOResult result;
+  result.bytes = entry.dwNumberOfBytesTransferred;
+  result.completed = true;
+
   // We take the lock at this point - since we could race with changeListener
   // or WinContext::cancel().
   RequestType request;
@@ -160,8 +164,8 @@ CompletionPort::Dispatch(WinContext *context, OVERLAPPED_ENTRY &entry, DWORD err
 
         // If we have a transport and it's closed - or the IO operation was
         // cancelled - just leave now. Note we always grab the transport even
-        // if the state was Cancelled, since we have to free the ref.
-        if (request == RequestType::Cancelled)
+        // if the state was Cancelled, since we have to acquire its ref.
+        if (transport->Closed() || request == RequestType::Cancelled)
           return false;
 
         // Would be much nicer if we could use RtlNtStatusToDosError() here, but
@@ -181,15 +185,11 @@ CompletionPort::Dispatch(WinContext *context, OVERLAPPED_ENTRY &entry, DWORD err
     }
 
     // Detach the context. After this point, we can return whenever we want.
-    // Note that the object has already been refed above, so we always pass
-    // nullptr here.
-    WinBasePoller::unlink(context, static_cast<IRefcounted *>(nullptr));
+    // Note that the object may have exactly one ref at this point, so it's
+    // important that it goes right into a Refed location.
+    result.context = WinBasePoller::take(context);
   }
 
-  IOResult result;
-  result.bytes = entry.dwNumberOfBytesTransferred;
-  result.completed = true;
-  result.context = context;
   if (error) {
     if (error == ERROR_HANDLE_EOF)
       result.ended = true;

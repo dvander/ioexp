@@ -97,7 +97,7 @@ class AMIO_LINK TaskQueue
 };
 
 // An event loop encapsulates a TaskQueue and optionally other polling systems.
-class AMIO_LINK EventLoop : public TaskQueue::Delegate
+class AMIO_LINK EventLoop
 {
  public:
   // Event loops should be freed with |delete|.
@@ -118,15 +118,22 @@ class AMIO_LINK EventLoop : public TaskQueue::Delegate
   // Polls for new events in a loop. The only way to exit the loop is to post
   // a ShouldQuit() message.
   virtual void Loop() = 0;
+
+  // Shuts down the event loop; this is usually called after Loop() exits. It
+  // must not be called from within Loop().
+  virtual void Shutdown() = 0;
 };
 
+#if defined(KE_POSIX)
 // An EventQueue is a wrapper around a poller. Instead of immediately
 // delivering events, it buffers status changes and can deliver them
 // incrementally. This is useful for constructing event loops that
 // prioritize some tasks over others.
 //
-// To use a status queue, simply Poll() and then ask the queue to process
-// events.
+// To use an EventQueue, simply Poll() and then ask the queue to process events.
+// EventQueues are not implemented on Windows. A Poller is effectively an
+// EventQueue already, and users who wish to have multiple may simply use
+// multiple pollers.
 //
 // EventQueues are not thread-safe. All operations must occur on the same
 // thread.
@@ -153,6 +160,7 @@ class EventQueue : public IODispatcher
   // not shutdown the underlying poller.
   virtual void Shutdown() = 0;
 };
+#endif
 
 // An event loop for I/O multiplexing. This is essentially a wrapper around
 // a Poller and a single EventQueue. Tasks are prioritized over events.

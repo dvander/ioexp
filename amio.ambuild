@@ -66,8 +66,10 @@ def Configure(binary):
     ]
   elif builder.target_platform == 'windows':
     binary.sources += [
+      'windows/windows-base-poller.cc',
       'windows/windows-context.cc',
       'windows/windows-errors.cc',
+      'windows/windows-event-loop.cc',
       'windows/windows-file.cc',
       'windows/windows-iocp.cc',
       'windows/windows-net.cc',

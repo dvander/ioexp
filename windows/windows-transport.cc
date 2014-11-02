@@ -27,8 +27,12 @@ void
 WinTransport::Close()
 {
   // Clear the listener and poller, just to get rid of its ref early.
-  poller_ = nullptr;
-  listener_ = nullptr;
+  if (Ref<WinBasePoller> poller = poller_.get()) {
+    // Note: we have to protect the listener when we do this.
+    AutoMaybeLock lock(poller->lock());
+    poller_ = nullptr;
+    listener_ = nullptr;
+  }
 }
 
 WinContext *

@@ -50,16 +50,17 @@ class WinBasePoller
   void link(WinContext *context, const T &object, RequestType type) {
     if (object)
       object->AddRef();
-
     this->link_impl(context, type);
   }
   template <typename T>
   void unlink(WinContext *context, const T &object) {
     this->unlink_impl(context);
-
     if (object)
       object->Release();
   }
+
+  // Special version just for Poll().
+  AlreadyRefed<WinContext> take(WinContext *context);
 
  private:
   void link_impl(WinContext *context, RequestType type);

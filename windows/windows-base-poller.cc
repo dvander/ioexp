@@ -114,3 +114,10 @@ WinBasePoller::unlink_impl(WinContext *context)
   context->detach();
   context->Release();
 }
+
+AlreadyRefed<WinContext>
+WinBasePoller::take(WinContext *context)
+{
+  context->detach();
+  return AlreadyRefed<WinContext>(context);
+}

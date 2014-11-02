@@ -28,8 +28,8 @@ class PokeThread : public IRunnable
 
   void Run() override {
     me_->Loop();
-    other_->PostQuit();
     Ended = true;
+    other_->PostQuit();
   }
 
   bool Ended;
