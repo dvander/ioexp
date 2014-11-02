@@ -20,6 +20,7 @@ using namespace ke;
 
 class PosixEventLoopForIO
  : public EventLoopForIO,
+   public TaskQueue::Delegate,
    public ke::Refcounted<PosixEventLoopForIO>
 {
  public:
